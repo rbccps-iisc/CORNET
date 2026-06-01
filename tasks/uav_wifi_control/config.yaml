@@ -1,0 +1,35 @@
+_schema: unified-v1
+network:
+  plugin: mininet
+  type: mininet
+  mininet:
+    wmediumd: true
+    ssid: cornet-uav
+    mode: g
+    channel: 6
+  nodes:
+    - name: ap0
+      type: STATIC
+      ip: 10.0.0.1
+    - name: uav0
+      type: MOBILE
+      ip: 10.0.0.2
+      container:
+        image: ros:humble
+robot:
+  plugin: gazebo
+  robots:
+    - name: uav0
+      model:
+        type: sdf
+        path: models/uav.sdf
+      pose:
+        x: 0.0
+        y: 0.0
+        z: 0.5
+experiment:
+  name: uav_wifi_control
+  duration: 30.0
+  output_dir: tasks/uav_wifi_control/results
+  primary_metric: position_rms
+  higher_is_better: false

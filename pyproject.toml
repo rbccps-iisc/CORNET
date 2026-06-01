@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "cornet-framework"
+version = "0.1.0"
+description = "CORNET: Generic Co-Simulation Framework for Networked Robots"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+    "rich",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+cornet = "cornet.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/rbccps-iisc/CORNET"
+Repository = "https://github.com/rbccps-iisc/CORNET"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cornet*"]

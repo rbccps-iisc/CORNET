@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": "2026-05-31T16:21:27.673361",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-4/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  }
+]

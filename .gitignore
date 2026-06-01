@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+tasks/*/generated_launch_*.py
+tasks/*/leaderboard.json.bak.*
+tasks/*/results/

@@ -1,0 +1,35 @@
+_schema: unified-v1
+network:
+  plugin: ns3
+  type: ns3
+  simulation_script: remote_robot_control-default
+  profile: 5g_nr_urllc
+  scheduler: pf
+  nodes:
+    - name: pendulum_robot
+      type: UE
+      ip: 7.0.0.2
+    - name: pendulum_controller
+      type: UE
+      ip: 7.0.0.3
+    - name: gnb1
+      type: GNB
+      ip: 7.0.0.1
+robot:
+  plugin: gazebo
+  robots:
+    - name: pendulum
+      model:
+        type: urdf
+        path: models/pendulum.urdf
+experiment:
+  name: aoi_5phase_eval
+  duration: 120.0
+  output_dir: tasks/aoi_5phase_eval/results
+  primary_metric: mean_aoi_ms
+  higher_is_better: false
+  sweep:
+    axes:
+      network.scheduler: [phase1_pf, phase2_edf_urllc, phase3_aoi_pf, phase4_aoi_send, phase5_mac_aoi]
+    repeats: 1
+    parallel: false
