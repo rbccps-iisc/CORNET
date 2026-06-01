@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""
+gen_schema_docs.py — Generate docs/reference/config-schema.md from schema.py.
+
+Reads Field descriptions from cornet.config.schema via model_json_schema()
+and renders a Markdown reference page with per-model tables.
+
+Usage:
+  python3 scripts/gen_schema_docs.py
+
+Output: docs/reference/config-schema.md (overwritten each run)
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+# Make sure the repo root is importable
+REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from cornet.config.schema import (
+    ContainerConfig,
+    ExperimentConfig,
+    MiddlewareConfig,
+    MininetConfig,
+    MobilityConfig,
+    ModelConfig,
+    NetworkConfig,
+    NodeConfig,
+    PoseConfig,
+    RobotConfig,
+    RobotEntry,
+    ScenarioConfig,
+    SweepConfig,
+    UnifiedConfig,
+)
+
+# Ordered list of models to document
+MODELS = [
+    ("UnifiedConfig", UnifiedConfig, "Root configuration model. Every `config.yaml` must parse as `UnifiedConfig`."),
+    ("NetworkConfig", NetworkConfig, "Network simulation backend settings (`network:` section)."),
+    ("NodeConfig", NodeConfig, "A single network node in the topology."),
+    ("ContainerConfig", ContainerConfig, "Docker container configuration for a network node."),
+    ("MininetConfig", MininetConfig, "Mininet-WiFi access point settings."),
+    ("MiddlewareConfig", MiddlewareConfig, "Co-simulation middleware layer settings."),
+    ("MobilityConfig", MobilityConfig, "Live position update settings for PositionBroadcaster."),
+    ("ScenarioConfig", ScenarioConfig, "5G/6G NS-3 scenario profile selection."),
+    ("RobotConfig", RobotConfig, "Robot simulation backend settings (`robot:` section)."),
+    ("RobotEntry", RobotEntry, "A single robot to spawn in the simulation world."),
+    ("ModelConfig", ModelConfig, "Robot model file reference."),
+    ("PoseConfig", PoseConfig, "Initial spawn pose for a robot."),
+    ("ExperimentConfig", ExperimentConfig, "Experiment runtime settings (`experiment:` section)."),
+    ("SweepConfig", SweepConfig, "Parameter sweep configuration."),
+]
+
+
+def _type_str(prop: dict, defs: dict) -> str:
+    """Render a JSON Schema property as a compact type string."""
+    if "$ref" in prop:
+        ref = prop["$ref"].split("/")[-1]
+        return f"[{ref}](#{ref.lower()})"
+    any_of = prop.get("anyOf") or prop.get("oneOf")
+    if any_of:
+        parts = [_type_str(p, defs) for p in any_of]
+        return " | ".join(parts)
+    t = prop.get("type")
+    fmt = prop.get("format")
+    if t == "array":
+        items = prop.get("items", {})
+        return f"list[{_type_str(items, defs)}]"
+    if t == "object" and "additionalProperties" in prop:
+        val_t = _type_str(prop["additionalProperties"], defs)
+        return f"dict[str, {val_t}]"
+    if t == "null":
+        return "null"
+    if fmt:
+        return f"{t} ({fmt})"
+    if t:
+        return t
+    enum = prop.get("enum")
+    if enum:
+        return " | ".join(f'"{e}"' for e in enum)
+    const = prop.get("const")
+    if const is not None:
+        return f'"{const}"'
+    return "any"
+
+
+def _default_str(prop: dict) -> str:
+    if "default" in prop:
+        d = prop["default"]
+        if d is None:
+            return "null"
+        if isinstance(d, str):
+            return f'`"{d}"`'
+        if isinstance(d, (list, dict)):
+            return f"`{json.dumps(d)}`"
+        return f"`{d}`"
+    return "—"
+
+
+def _render_model_table(name: str, model_cls, description: str, defs: dict) -> list[str]:
+    lines: list[str] = []
+    lines.append(f"## {name}")
+    lines.append("")
+    lines.append(description)
+    lines.append("")
+
+    schema = model_cls.model_json_schema()
+    props = schema.get("properties", {})
+    required = set(schema.get("required", []))
+
+    if not props:
+        lines.append("*No configurable fields.*")
+        lines.append("")
+        return lines
+
+    lines.append("| Field | Type | Default | Required | Description |")
+    lines.append("|---|---|---|---|---|")
+
+    for field_name, prop in props.items():
+        # Resolve $ref if present (to get description from the referenced model)
+        if "$ref" in prop:
+            ref_name = prop["$ref"].split("/")[-1]
+            resolved = defs.get(ref_name, prop)
+            type_str = _type_str(prop, defs)
+            desc = resolved.get("description", prop.get("description", "—"))
+        else:
+            type_str = _type_str(prop, defs)
+            desc = prop.get("description", "—")
+
+        default = _default_str(prop)
+        req = "✓" if field_name in required else ""
+        # Escape pipe characters in description
+        desc = desc.replace("|", "\\|")
+        lines.append(f"| `{field_name}` | {type_str} | {default} | {req} | {desc} |")
+
+    lines.append("")
+    return lines
+
+
+def generate() -> str:
+    root_schema = UnifiedConfig.model_json_schema()
+    defs = root_schema.get("$defs", {})
+
+    output: list[str] = [
+        "<!-- DO NOT EDIT MANUALLY — generated by scripts/gen_schema_docs.py -->",
+        "<!-- Run `make docs` to regenerate after editing cornet/config/schema.py -->",
+        "",
+        "# CORNET Unified Config Schema Reference",
+        "",
+        "This page is auto-generated from `cornet/config/schema.py`.",
+        "All fields support YAML and JSON input.",
+        "Dot-path notation (e.g. `network.middleware.rtf`) is used in sweep axes.",
+        "",
+        "---",
+        "",
+    ]
+
+    for model_name, model_cls, description in MODELS:
+        output.extend(_render_model_table(model_name, model_cls, description, defs))
+
+    return "\n".join(output) + "\n"
+
+
+def main() -> None:
+    out_path = REPO_ROOT / "docs" / "reference" / "config-schema.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    content = generate()
+    out_path.write_text(content)
+    print(f"Generated: {out_path.relative_to(REPO_ROOT)}")
+
+
+if __name__ == "__main__":
+    main()

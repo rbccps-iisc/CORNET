@@ -1,0 +1,628 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b6976e30..9e3b32bf 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -37,6 +37,7 @@ set(source_files
+     model/nr-mac-scheduler-tdma-pf.cc
+     model/nr-mac-scheduler-ofdma-rr.cc
+     model/nr-mac-scheduler-ofdma-pf.cc
++    model/nr-mac-scheduler-ofdma-edf.cc
+     model/nr-control-messages.cc
+     model/nr-spectrum-signal-parameters.cc
+     model/nr-radio-bearer-tag.cc
+@@ -72,6 +73,7 @@ set(source_files
+     model/nr-mac-scheduler-tdma-mr.cc
+     model/nr-mac-scheduler-ue-info.cc
+     model/nr-mac-scheduler-ue-info-pf.cc
++    model/nr-mac-scheduler-ue-info-edf.cc
+     model/nr-eesm-error-model.cc
+     model/nr-eesm-t1.cc
+     model/nr-eesm-t2.cc
+@@ -153,6 +155,7 @@ set(header_files
+     model/nr-mac-scheduler-tdma-pf.h
+     model/nr-mac-scheduler-ofdma-rr.h
+     model/nr-mac-scheduler-ofdma-pf.h
++    model/nr-mac-scheduler-ofdma-edf.h
+     model/nr-control-messages.h
+     model/nr-spectrum-signal-parameters.h
+     model/nr-radio-bearer-tag.h
+@@ -184,6 +187,7 @@ set(header_files
+     model/nr-mac-scheduler-ue-info-mr.h
+     model/nr-mac-scheduler-ue-info-rr.h
+     model/nr-mac-scheduler-ue-info-pf.h
++    model/nr-mac-scheduler-ue-info-edf.h
+     model/nr-eesm-error-model.h
+     model/nr-eesm-t1.h
+     model/nr-eesm-t2.h
+diff --git a/model/nr-mac-scheduler-lcg.h b/model/nr-mac-scheduler-lcg.h
+index 662cc586..2f8fdb8b 100644
+--- a/model/nr-mac-scheduler-lcg.h
++++ b/model/nr-mac-scheduler-lcg.h
+@@ -171,6 +171,16 @@ class NrMacSchedulerLCG
+      */
+     std::vector<uint8_t> GetLCId() const;
+ 
++    /**
++     * \brief Get a logical channel by id
++     * \param lcId LC ID
++     * \return raw pointer to the LC
++     */
++    NrMacSchedulerLC* GetLC(uint8_t lcId) const
++    {
++      return m_lcMap.at(lcId).get();
++    }
++
+     /**
+      * \brief Inform the LCG of the assigned data to a LC id
+      * \param lcId the LC id to which the data was assigned
+diff --git a/model/nr-mac-scheduler-ns3.cc b/model/nr-mac-scheduler-ns3.cc
+index 837db30c..e8193792 100644
+--- a/model/nr-mac-scheduler-ns3.cc
++++ b/model/nr-mac-scheduler-ns3.cc
+@@ -53,6 +53,7 @@ NrMacSchedulerNs3::NrMacSchedulerNs3()
+ 
+     // If more Srs allocators will be created, then we will add an attribute
+     m_schedulerSrs = CreateObject<NrMacSchedulerSrsDefault>();
++    m_prbRng = CreateObject<UniformRandomVariable>();
+ }
+ 
+ NrMacSchedulerNs3::~NrMacSchedulerNs3()
+@@ -92,7 +93,8 @@ int64_t
+ NrMacSchedulerNs3::AssignStreams(int64_t stream)
+ {
+     NS_LOG_FUNCTION(this << stream);
+-    return m_schedulerSrs->AssignStreams(stream);
++    m_prbRng->SetStream(stream);
++    return 1 + m_schedulerSrs->AssignStreams(stream + 1);
+     ;
+ }
+ 
+@@ -187,6 +189,11 @@ NrMacSchedulerNs3::GetTypeId()
+                           BooleanValue(true),
+                           MakeBooleanAccessor(&NrMacSchedulerNs3::EnableHarqReTx,
+                                               &NrMacSchedulerNs3::IsHarqReTxEnable),
++                          MakeBooleanChecker())
++            .AddAttribute("RandomizePrb",
++                          "Shuffle UE order per beam each slot to randomize PRB positions (frequency diversity)",
++                          BooleanValue(false),
++                          MakeBooleanAccessor(&NrMacSchedulerNs3::m_randomizePrb),
+                           MakeBooleanChecker());
+ 
+     return tid;
+@@ -1440,7 +1447,18 @@ NrMacSchedulerNs3::DoScheduleDlData(PointInFTPlane* spoint,
+             continue;
+         }
+ 
+-        for (const auto& ue : beam.second)
++        // PRB randomization: shuffle UE order so frequency positions rotate each slot
++        std::vector<UePtrAndBufferReq> beamDlUes{beam.second};
++        if (m_randomizePrb && beamDlUes.size() > 1)
++        {
++            for (std::size_t i = beamDlUes.size() - 1; i > 0; --i)
++            {
++                auto j = static_cast<std::size_t>(m_prbRng->GetValue(0.0, i + 1));
++                std::swap(beamDlUes[i], beamDlUes[j]);
++            }
++        }
++
++        for (const auto& ue : beamDlUes)
+         {
+             if (ue.first->m_dlRBG == 0)
+             {
+@@ -1685,7 +1703,18 @@ NrMacSchedulerNs3::DoScheduleUlData(PointInFTPlane* spoint,
+             continue;
+         }
+ 
+-        for (const auto& ue : beam.second)
++        // PRB randomization: shuffle UE order so frequency positions rotate each slot
++        std::vector<UePtrAndBufferReq> beamUlUes{beam.second};
++        if (m_randomizePrb && beamUlUes.size() > 1)
++        {
++            for (std::size_t i = beamUlUes.size() - 1; i > 0; --i)
++            {
++                auto j = static_cast<std::size_t>(m_prbRng->GetValue(0.0, i + 1));
++                std::swap(beamUlUes[i], beamUlUes[j]);
++            }
++        }
++
++        for (const auto& ue : beamUlUes)
+         {
+             if (ue.first->m_ulRBG == 0)
+             {
+diff --git a/model/nr-mac-scheduler-ns3.h b/model/nr-mac-scheduler-ns3.h
+index 6ec738ac..f8ae93bf 100644
+--- a/model/nr-mac-scheduler-ns3.h
++++ b/model/nr-mac-scheduler-ns3.h
+@@ -14,6 +14,8 @@
+ #include "nr-mac-scheduler.h"
+ #include "nr-phy-mac-common.h"
+ 
++#include <ns3/random-variable-stream.h>
++
+ #include <functional>
+ #include <list>
+ #include <memory>
+@@ -941,6 +943,9 @@ class NrMacSchedulerNs3 : public NrMacScheduler
+     friend NrSchedGeneralTestCase;
+ 
+     bool m_enableHarqReTx{true}; //!< Flag to enable or disable HARQ ReTx (attribute)
++
++    bool m_randomizePrb{false};                  //!< Randomize PRB order per beam for frequency diversity
++    mutable Ptr<UniformRandomVariable> m_prbRng; //!< RNG used for PRB position shuffling
+ };
+ 
+ } // namespace ns3
+--- a/model/nr-mac-scheduler-ofdma-edf.h	2026-03-19 13:58:23.075999976 +0530
++++ b/model/nr-mac-scheduler-ofdma-edf.h	2026-03-19 15:00:00.208150286 +0530
+@@ -0,0 +1,76 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#pragma once
++
++#include "nr-mac-scheduler-ofdma-rr.h"
++
++namespace ns3
++{
++
++/**
++ * \ingroup scheduler
++ * \brief Assign frequencies in an EDF-inspired fashion.
++ *
++ * DL UE ordering is based on remaining delay budget and bearer PER, while UL
++ * keeps the existing throughput-aware ordering.
++ */
++class NrMacSchedulerOfdmaEdf : public NrMacSchedulerOfdmaRR
++{
++  public:
++    static TypeId GetTypeId();
++
++    NrMacSchedulerOfdmaEdf();
++
++    ~NrMacSchedulerOfdmaEdf() override
++    {
++    }
++
++    void SetFairnessIndex(double v);
++    double GetFairnessIndex() const;
++
++    void SetTimeWindow(double v);
++    double GetTimeWindow() const;
++
++  protected:
++    std::shared_ptr<NrMacSchedulerUeInfo> CreateUeRepresentation(
++        const NrMacCschedSapProvider::CschedUeConfigReqParameters& params) const override;
++
++    std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq& lhs,
++                       const NrMacSchedulerNs3::UePtrAndBufferReq& rhs)>
++    GetUeCompareDlFn() const override;
++
++    std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq& lhs,
++                       const NrMacSchedulerNs3::UePtrAndBufferReq& rhs)>
++    GetUeCompareUlFn() const override;
++
++    void AssignedDlResources(const UePtrAndBufferReq& ue,
++                             const FTResources& assigned,
++                             const FTResources& totAssigned) const override;
++
++    void NotAssignedDlResources(const UePtrAndBufferReq& ue,
++                                const FTResources& notAssigned,
++                                const FTResources& totalAssigned) const override;
++
++    void AssignedUlResources(const UePtrAndBufferReq& ue,
++                             const FTResources& assigned,
++                             const FTResources& totAssigned) const override;
++
++    void NotAssignedUlResources(const UePtrAndBufferReq& ue,
++                                const FTResources& notAssigned,
++                                const FTResources& totalAssigned) const override;
++
++    void BeforeDlSched(const UePtrAndBufferReq& ue,
++                       const FTResources& assignableInIteration) const override;
++
++    void BeforeUlSched(const UePtrAndBufferReq& ue,
++                       const FTResources& assignableInIteration) const override;
++
++  private:
++    double m_timeWindow{99.0};
++    double m_alpha{1.0};
++};
++
++} // namespace ns3
+--- a/model/nr-mac-scheduler-ofdma-edf.cc	2026-03-19 13:58:23.075999976 +0530
++++ b/model/nr-mac-scheduler-ofdma-edf.cc	2026-03-19 15:00:21.656209179 +0530
+@@ -0,0 +1,158 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include "nr-mac-scheduler-ofdma-edf.h"
++
++#include "nr-mac-scheduler-ue-info-edf.h"
++
++#include <ns3/double.h>
++#include <ns3/log.h>
++
++namespace ns3
++{
++
++NS_LOG_COMPONENT_DEFINE("NrMacSchedulerOfdmaEdf");
++NS_OBJECT_ENSURE_REGISTERED(NrMacSchedulerOfdmaEdf);
++
++TypeId
++NrMacSchedulerOfdmaEdf::GetTypeId()
++{
++    static TypeId tid =
++        TypeId("ns3::NrMacSchedulerOfdmaEdf")
++            .SetParent<NrMacSchedulerOfdmaRR>()
++            .AddConstructor<NrMacSchedulerOfdmaEdf>()
++            .AddAttribute("FairnessIndex",
++                          "Value (between 0 and 1) used to scale throughput-aware tie-breaking",
++                          DoubleValue(1),
++                          MakeDoubleAccessor(&NrMacSchedulerOfdmaEdf::SetFairnessIndex,
++                                             &NrMacSchedulerOfdmaEdf::GetFairnessIndex),
++                          MakeDoubleChecker<float>(0, 1))
++            .AddAttribute("LastAvgTPutWeight",
++                          "Weight of the last average throughput in the average throughput calculation",
++                          DoubleValue(99),
++                          MakeDoubleAccessor(&NrMacSchedulerOfdmaEdf::SetTimeWindow,
++                                             &NrMacSchedulerOfdmaEdf::GetTimeWindow),
++                          MakeDoubleChecker<float>(0));
++    return tid;
++}
++
++NrMacSchedulerOfdmaEdf::NrMacSchedulerOfdmaEdf()
++    : NrMacSchedulerOfdmaRR()
++{
++}
++
++void
++NrMacSchedulerOfdmaEdf::SetFairnessIndex(double v)
++{
++    NS_LOG_FUNCTION(this);
++    m_alpha = v;
++}
++
++double
++NrMacSchedulerOfdmaEdf::GetFairnessIndex() const
++{
++    NS_LOG_FUNCTION(this);
++    return m_alpha;
++}
++
++void
++NrMacSchedulerOfdmaEdf::SetTimeWindow(double v)
++{
++    NS_LOG_FUNCTION(this);
++    m_timeWindow = v;
++}
++
++double
++NrMacSchedulerOfdmaEdf::GetTimeWindow() const
++{
++    NS_LOG_FUNCTION(this);
++    return m_timeWindow;
++}
++
++std::shared_ptr<NrMacSchedulerUeInfo>
++NrMacSchedulerOfdmaEdf::CreateUeRepresentation(
++    const NrMacCschedSapProvider::CschedUeConfigReqParameters& params) const
++{
++    NS_LOG_FUNCTION(this);
++    return std::make_shared<NrMacSchedulerUeInfoEdf>(
++        m_alpha,
++        params.m_rnti,
++        params.m_beamConfId,
++        std::bind(&NrMacSchedulerOfdmaEdf::GetNumRbPerRbg, this));
++}
++
++std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq& lhs,
++                   const NrMacSchedulerNs3::UePtrAndBufferReq& rhs)>
++NrMacSchedulerOfdmaEdf::GetUeCompareDlFn() const
++{
++    return NrMacSchedulerUeInfoEdf::CompareUeWeightsDl;
++}
++
++std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq& lhs,
++                   const NrMacSchedulerNs3::UePtrAndBufferReq& rhs)>
++NrMacSchedulerOfdmaEdf::GetUeCompareUlFn() const
++{
++    return NrMacSchedulerUeInfoEdf::CompareUeWeightsUl;
++}
++
++void
++NrMacSchedulerOfdmaEdf::AssignedDlResources(const UePtrAndBufferReq& ue,
++                                            [[maybe_unused]] const FTResources& assigned,
++                                            const FTResources& totAssigned) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoEdf>(ue.first);
++    uePtr->UpdateDlEdfMetric(totAssigned, m_timeWindow, m_dlAmc);
++}
++
++void
++NrMacSchedulerOfdmaEdf::NotAssignedDlResources(const UePtrAndBufferReq& ue,
++                                               [[maybe_unused]] const FTResources& notAssigned,
++                                               const FTResources& totalAssigned) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoEdf>(ue.first);
++    uePtr->UpdateDlEdfMetric(totalAssigned, m_timeWindow, m_dlAmc);
++}
++
++void
++NrMacSchedulerOfdmaEdf::AssignedUlResources(const UePtrAndBufferReq& ue,
++                                            [[maybe_unused]] const FTResources& assigned,
++                                            const FTResources& totAssigned) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoEdf>(ue.first);
++    uePtr->UpdateUlEdfMetric(totAssigned, m_timeWindow, m_ulAmc);
++}
++
++void
++NrMacSchedulerOfdmaEdf::NotAssignedUlResources(const UePtrAndBufferReq& ue,
++                                               [[maybe_unused]] const FTResources& notAssigned,
++                                               const FTResources& totalAssigned) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoEdf>(ue.first);
++    uePtr->UpdateUlEdfMetric(totalAssigned, m_timeWindow, m_ulAmc);
++}
++
++void
++NrMacSchedulerOfdmaEdf::BeforeDlSched(const UePtrAndBufferReq& ue,
++                                      const FTResources& assignableInIteration) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoEdf>(ue.first);
++    uePtr->CalculatePotentialTPutDl(assignableInIteration, m_dlAmc);
++}
++
++void
++NrMacSchedulerOfdmaEdf::BeforeUlSched(const UePtrAndBufferReq& ue,
++                                      const FTResources& assignableInIteration) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoEdf>(ue.first);
++    uePtr->CalculatePotentialTPutUl(assignableInIteration, m_ulAmc);
++}
++
++} // namespace ns3
+--- a/model/nr-mac-scheduler-ue-info-edf.h	2026-03-19 13:58:23.075999976 +0530
++++ b/model/nr-mac-scheduler-ue-info-edf.h	2026-03-19 15:08:52.665489063 +0530
+@@ -0,0 +1,143 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#pragma once
++
++#include "nr-mac-scheduler-ue-info-rr.h"
++
++#include <cmath>
++
++namespace ns3
++{
++
++/**
++ * \ingroup scheduler
++ * \brief UE representation for EDF-style scheduling.
++ *
++ * The implementation keeps the PF-style throughput bookkeeping already used by
++ * the NR schedulers, but the DL ordering is driven by urgency derived from the
++ * remaining packet delay budget and the bearer PER target.
++ */
++class NrMacSchedulerUeInfoEdf : public NrMacSchedulerUeInfo
++{
++  public:
++    NrMacSchedulerUeInfoEdf(float alpha,
++                            uint16_t rnti,
++                            BeamConfId beamConfId,
++                            const GetRbPerRbgFn& fn)
++        : NrMacSchedulerUeInfo(rnti, beamConfId, fn),
++          m_alpha(alpha)
++    {
++    }
++
++    void ResetDlSchedInfo() override
++    {
++        m_lastAvgTputDl = m_avgTputDl;
++        m_avgTputDl = 0.0;
++        m_currTputDl = 0.0;
++        m_potentialTputDl = 0.0;
++        NrMacSchedulerUeInfo::ResetDlSchedInfo();
++    }
++
++    void ResetUlSchedInfo() override
++    {
++        m_lastAvgTputUl = m_avgTputUl;
++        m_avgTputUl = 0.0;
++        m_currTputUl = 0.0;
++        m_potentialTputUl = 0.0;
++        NrMacSchedulerUeInfo::ResetUlSchedInfo();
++    }
++
++    void ResetDlMetric() override
++    {
++        NrMacSchedulerUeInfo::ResetDlMetric();
++        m_avgTputDl = m_lastAvgTputDl;
++    }
++
++    void ResetUlMetric() override
++    {
++        NrMacSchedulerUeInfo::ResetUlMetric();
++        m_avgTputUl = m_lastAvgTputUl;
++    }
++
++    void UpdateDlEdfMetric(const NrMacSchedulerNs3::FTResources& totAssigned,
++                           double timeWindow,
++                           const Ptr<const NrAmc>& amc);
++
++    void UpdateUlEdfMetric(const NrMacSchedulerNs3::FTResources& totAssigned,
++                           double timeWindow,
++                           const Ptr<const NrAmc>& amc);
++
++    void CalculatePotentialTPutDl(const NrMacSchedulerNs3::FTResources& assignableInIteration,
++                                  const Ptr<const NrAmc>& amc);
++
++    void CalculatePotentialTPutUl(const NrMacSchedulerNs3::FTResources& assignableInIteration,
++                                  const Ptr<const NrAmc>& amc);
++
++    static bool CompareUeWeightsDl(const NrMacSchedulerNs3::UePtrAndBufferReq& lue,
++                                   const NrMacSchedulerNs3::UePtrAndBufferReq& rue)
++    {
++        double lWeight = CalculateDlWeight(lue);
++        double rWeight = CalculateDlWeight(rue);
++        return lWeight > rWeight;
++    }
++
++    static bool CompareUeWeightsUl(const NrMacSchedulerNs3::UePtrAndBufferReq& lue,
++                                   const NrMacSchedulerNs3::UePtrAndBufferReq& rue)
++    {
++        auto luePtr = dynamic_cast<NrMacSchedulerUeInfoEdf*>(lue.first.get());
++        auto ruePtr = dynamic_cast<NrMacSchedulerUeInfoEdf*>(rue.first.get());
++
++        double lMetric = std::pow(luePtr->m_potentialTputUl, luePtr->m_alpha) /
++                         std::max(1E-9, luePtr->m_avgTputUl);
++        double rMetric = std::pow(ruePtr->m_potentialTputUl, ruePtr->m_alpha) /
++                         std::max(1E-9, ruePtr->m_avgTputUl);
++        return lMetric > rMetric;
++    }
++
++    static double CalculateDlWeight(const NrMacSchedulerNs3::UePtrAndBufferReq& ue)
++    {
++        auto uePtr = dynamic_cast<NrMacSchedulerUeInfoEdf*>(ue.first.get());
++        double urgencyWeight = 0.0;
++
++        for (const auto& ueLcg : ue.first->m_dlLCG)
++        {
++            std::vector<uint8_t> lcIds = ueLcg.second->GetLCId();
++            for (const auto lcId : lcIds)
++            {
++                const NrMacSchedulerLC* lc = ueLcg.second->GetLC(lcId);
++                if (lc == nullptr || lc->GetTotalSize() == 0)
++                {
++                    continue;
++                }
++
++                const double delayBudgetMs = static_cast<double>(lc->m_delayBudget.GetMilliSeconds());
++                const double holDelayMs = static_cast<double>(lc->m_rlcTransmissionQueueHolDelay);
++                const double remainingBudgetMs = std::max(0.1, delayBudgetMs - holDelayMs);
++                const double delayUrgency = delayBudgetMs > 0.0 ? (delayBudgetMs / remainingBudgetMs)
++                                                                : (1.0 / remainingBudgetMs);
++                const double reliabilityWeight = 1.0 / std::max(1E-9, lc->m_PER);
++                urgencyWeight += delayUrgency * reliabilityWeight;
++            }
++        }
++
++        const double pfMetric = std::pow(std::max(1E-9, uePtr->m_potentialTputDl), uePtr->m_alpha) /
++                                std::max(1E-9, uePtr->m_avgTputDl);
++        return std::max(1E-9, urgencyWeight) * std::max(1.0, pfMetric);
++    }
++
++    double m_currTputDl{0.0};
++    double m_avgTputDl{0.0};
++    double m_lastAvgTputDl{0.0};
++    double m_potentialTputDl{0.0};
++    float m_alpha{0.0};
++
++    double m_currTputUl{0.0};
++    double m_avgTputUl{0.0};
++    double m_lastAvgTputUl{0.0};
++    double m_potentialTputUl{0.0};
++};
++
++} // namespace ns3
+--- a/model/nr-mac-scheduler-ue-info-edf.cc	2026-03-19 13:58:23.075999976 +0530
++++ b/model/nr-mac-scheduler-ue-info-edf.cc	2026-03-19 14:59:48.328116744 +0530
+@@ -0,0 +1,85 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include "nr-mac-scheduler-ue-info-edf.h"
++
++#include <ns3/log.h>
++
++namespace ns3
++{
++
++NS_LOG_COMPONENT_DEFINE("NrMacSchedulerUeInfoEdf");
++
++void
++NrMacSchedulerUeInfoEdf::UpdateDlEdfMetric(const NrMacSchedulerNs3::FTResources& totAssigned,
++                                           double timeWindow,
++                                           const Ptr<const NrAmc>& amc)
++{
++    NS_LOG_FUNCTION(this);
++
++    NrMacSchedulerUeInfo::UpdateDlMetric(amc);
++    uint32_t tbSize = 0;
++    for (const auto& it : m_dlTbSize)
++    {
++        tbSize += it;
++    }
++
++    m_currTputDl = static_cast<double>(tbSize) / totAssigned.m_sym;
++    m_avgTputDl = ((1.0 - (1.0 / static_cast<double>(timeWindow))) * m_lastAvgTputDl) +
++                  ((1.0 / timeWindow) * m_currTputDl);
++}
++
++void
++NrMacSchedulerUeInfoEdf::UpdateUlEdfMetric(const NrMacSchedulerNs3::FTResources& totAssigned,
++                                           double timeWindow,
++                                           const Ptr<const NrAmc>& amc)
++{
++    NS_LOG_FUNCTION(this);
++
++    NrMacSchedulerUeInfo::UpdateUlMetric(amc);
++    m_currTputUl = static_cast<double>(m_ulTbSize) / totAssigned.m_sym;
++    m_avgTputUl = ((1.0 - (1.0 / static_cast<double>(timeWindow))) * m_lastAvgTputUl) +
++                  ((1.0 / timeWindow) * m_currTputUl);
++}
++
++void
++NrMacSchedulerUeInfoEdf::CalculatePotentialTPutDl(
++    const NrMacSchedulerNs3::FTResources& assignableInIteration,
++    const Ptr<const NrAmc>& amc)
++{
++    NS_LOG_FUNCTION(this);
++
++    uint32_t rbsAssignable = assignableInIteration.m_rbg * GetNumRbPerRbg();
++    m_potentialTputDl = 0.0;
++
++    if (this->m_dlCqi.m_ri == 1)
++    {
++        auto mcsIt = std::max_element(m_dlMcs.begin(), m_dlMcs.end());
++        m_potentialTputDl = amc->CalculateTbSize(*mcsIt, rbsAssignable);
++    }
++    else if (this->m_dlCqi.m_ri == 2)
++    {
++        for (const auto& it : m_dlMcs)
++        {
++            m_potentialTputDl += amc->CalculateTbSize(it, rbsAssignable);
++        }
++    }
++
++    m_potentialTputDl /= assignableInIteration.m_sym;
++}
++
++void
++NrMacSchedulerUeInfoEdf::CalculatePotentialTPutUl(
++    const NrMacSchedulerNs3::FTResources& assignableInIteration,
++    const Ptr<const NrAmc>& amc)
++{
++    NS_LOG_FUNCTION(this);
++
++    uint32_t rbsAssignable = assignableInIteration.m_rbg * GetNumRbPerRbg();
++    m_potentialTputUl = amc->CalculateTbSize(m_ulMcs, rbsAssignable);
++    m_potentialTputUl /= assignableInIteration.m_sym;
++}
++
++} // namespace ns3

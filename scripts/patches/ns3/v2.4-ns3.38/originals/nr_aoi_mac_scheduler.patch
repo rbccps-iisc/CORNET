@@ -1,0 +1,423 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b6976e30..b0c52b77 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -37,6 +37,8 @@ set(source_files
+     model/nr-mac-scheduler-tdma-pf.cc
+     model/nr-mac-scheduler-ofdma-rr.cc
+     model/nr-mac-scheduler-ofdma-pf.cc
++    model/nr-mac-scheduler-ofdma-edf.cc
++    model/nr-mac-scheduler-ofdma-aoi.cc
+     model/nr-control-messages.cc
+     model/nr-spectrum-signal-parameters.cc
+     model/nr-radio-bearer-tag.cc
+@@ -72,6 +74,8 @@ set(source_files
+     model/nr-mac-scheduler-tdma-mr.cc
+     model/nr-mac-scheduler-ue-info.cc
+     model/nr-mac-scheduler-ue-info-pf.cc
++    model/nr-mac-scheduler-ue-info-edf.cc
++    model/nr-mac-scheduler-ue-info-aoi.cc
+     model/nr-eesm-error-model.cc
+     model/nr-eesm-t1.cc
+     model/nr-eesm-t2.cc
+@@ -153,6 +157,8 @@ set(header_files
+     model/nr-mac-scheduler-tdma-pf.h
+     model/nr-mac-scheduler-ofdma-rr.h
+     model/nr-mac-scheduler-ofdma-pf.h
++    model/nr-mac-scheduler-ofdma-edf.h
++    model/nr-mac-scheduler-ofdma-aoi.h
+     model/nr-control-messages.h
+     model/nr-spectrum-signal-parameters.h
+     model/nr-radio-bearer-tag.h
+@@ -184,6 +190,8 @@ set(header_files
+     model/nr-mac-scheduler-ue-info-mr.h
+     model/nr-mac-scheduler-ue-info-rr.h
+     model/nr-mac-scheduler-ue-info-pf.h
++    model/nr-mac-scheduler-ue-info-edf.h
++    model/nr-mac-scheduler-ue-info-aoi.h
+     model/nr-eesm-error-model.h
+     model/nr-eesm-t1.h
+     model/nr-eesm-t2.h
+diff --git a/model/nr-mac-scheduler-ofdma-aoi.cc b/model/nr-mac-scheduler-ofdma-aoi.cc
+new file mode 100644
+index 00000000..2a22de9f
+--- /dev/null
++++ b/model/nr-mac-scheduler-ofdma-aoi.cc
+@@ -0,0 +1,100 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include "nr-mac-scheduler-ofdma-aoi.h"
++
++#include "nr-mac-scheduler-ue-info-aoi.h"
++
++#include <ns3/double.h>
++#include <ns3/log.h>
++
++namespace ns3
++{
++
++NS_LOG_COMPONENT_DEFINE("NrMacSchedulerOfdmaAoi");
++NS_OBJECT_ENSURE_REGISTERED(NrMacSchedulerOfdmaAoi);
++
++TypeId
++NrMacSchedulerOfdmaAoi::GetTypeId()
++{
++    static TypeId tid =
++        TypeId("ns3::NrMacSchedulerOfdmaAoi")
++            .SetParent<NrMacSchedulerOfdmaEdf>()
++            .AddConstructor<NrMacSchedulerOfdmaAoi>()
++            .AddAttribute(
++                "AoIBeta",
++                "Weight of the AoI additive term in the DL scheduling metric. "
++                "weight = urgency × (AoIBeta × age_ms + PF). "
++                "Set to 0 to disable AoI awareness (degenerates to EDF).",
++                DoubleValue(0.01),
++                MakeDoubleAccessor(&NrMacSchedulerOfdmaAoi::SetAoiBeta,
++                                   &NrMacSchedulerOfdmaAoi::GetAoiBeta),
++                MakeDoubleChecker<double>(0.0));
++    return tid;
++}
++
++NrMacSchedulerOfdmaAoi::NrMacSchedulerOfdmaAoi()
++    : NrMacSchedulerOfdmaEdf()
++{
++}
++
++void
++NrMacSchedulerOfdmaAoi::SetAoiBeta(double v)
++{
++    NS_LOG_FUNCTION(this << v);
++    m_aoiBeta = v;
++}
++
++double
++NrMacSchedulerOfdmaAoi::GetAoiBeta() const
++{
++    return m_aoiBeta;
++}
++
++std::shared_ptr<NrMacSchedulerUeInfo>
++NrMacSchedulerOfdmaAoi::CreateUeRepresentation(
++    const NrMacCschedSapProvider::CschedUeConfigReqParameters& params) const
++{
++    NS_LOG_FUNCTION(this);
++    return std::make_shared<NrMacSchedulerUeInfoAoi>(
++        static_cast<float>(m_alpha),
++        m_aoiBeta,
++        params.m_rnti,
++        params.m_beamConfId,
++        std::bind(&NrMacSchedulerOfdmaAoi::GetNumRbPerRbg, this));
++}
++
++std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq&,
++                   const NrMacSchedulerNs3::UePtrAndBufferReq&)>
++NrMacSchedulerOfdmaAoi::GetUeCompareDlFn() const
++{
++    return NrMacSchedulerUeInfoAoi::CompareUeWeightsDl;
++}
++
++void
++NrMacSchedulerOfdmaAoi::AssignedDlResources(const UePtrAndBufferReq& ue,
++                                            [[maybe_unused]] const FTResources& assigned,
++                                            const FTResources& totAssigned) const
++{
++    NS_LOG_FUNCTION(this);
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoAoi>(ue.first);
++    // Record transmission time — resets the AoI clock for this UE.
++    uePtr->OnDlTransmission();
++    // Also update EDF throughput bookkeeping (inherited).
++    uePtr->UpdateDlEdfMetric(totAssigned, m_timeWindow, m_dlAmc);
++}
++
++void
++NrMacSchedulerOfdmaAoi::NotAssignedDlResources(const UePtrAndBufferReq& ue,
++                                               [[maybe_unused]] const FTResources& notAssigned,
++                                               const FTResources& totalAssigned) const
++{
++    NS_LOG_FUNCTION(this);
++    // UE was not served this TTI — AoI keeps growing (no reset needed).
++    auto uePtr = std::dynamic_pointer_cast<NrMacSchedulerUeInfoAoi>(ue.first);
++    uePtr->UpdateDlEdfMetric(totalAssigned, m_timeWindow, m_dlAmc);
++}
++
++} // namespace ns3
+diff --git a/model/nr-mac-scheduler-ofdma-aoi.h b/model/nr-mac-scheduler-ofdma-aoi.h
+new file mode 100644
+index 00000000..f2108ce4
+--- /dev/null
++++ b/model/nr-mac-scheduler-ofdma-aoi.h
+@@ -0,0 +1,66 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:null; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#pragma once
++
++#include "nr-mac-scheduler-ofdma-edf.h"
++
++namespace ns3
++{
++
++/**
++ * \ingroup scheduler
++ * \brief 5G NR MAC OFDMA scheduler with Age-of-Information (AoI) awareness.
++ *
++ * Extends NrMacSchedulerOfdmaEdf with an additive AoI term in the DL
++ * scheduling weight.  The priority metric for UE selection is:
++ *
++ *   weight = urgency × (β·AoI_ms + PF)
++ *
++ * where:
++ *   urgency = EDF deadline/reliability ratio (see NrMacSchedulerUeInfoEdf)
++ *   AoI_ms  = milliseconds since this UE last received a DL allocation
++ *   β       = AoIBeta attribute (default 0.01)
++ *   PF      = potentialTput^alpha / avgTput  (Proportional-Fair term)
++ *
++ * Attributes (in addition to those from NrMacSchedulerOfdmaEdf):
++ *   - AoIBeta: weight of the AoI additive contribution (default 0.01)
++ *
++ * Usage in ns-3 scenario:
++ *   nrHelper->SetSchedulerTypeId(NrMacSchedulerOfdmaAoi::GetTypeId());
++ *   nrHelper->SetSchedulerAttribute("AoIBeta", DoubleValue(0.01));
++ */
++class NrMacSchedulerOfdmaAoi : public NrMacSchedulerOfdmaEdf
++{
++  public:
++    static TypeId GetTypeId();
++
++    NrMacSchedulerOfdmaAoi();
++
++    void SetAoiBeta(double v);
++    double GetAoiBeta() const;
++
++  protected:
++    std::shared_ptr<NrMacSchedulerUeInfo> CreateUeRepresentation(
++        const NrMacCschedSapProvider::CschedUeConfigReqParameters& params) const override;
++
++    std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq&,
++                       const NrMacSchedulerNs3::UePtrAndBufferReq&)>
++    GetUeCompareDlFn() const override;
++
++    // Override AssignedDlResources to update the AoI timestamp on TX
++    void AssignedDlResources(const UePtrAndBufferReq& ue,
++                             const FTResources& assigned,
++                             const FTResources& totAssigned) const override;
++
++    void NotAssignedDlResources(const UePtrAndBufferReq& ue,
++                                const FTResources& notAssigned,
++                                const FTResources& totAssigned) const override;
++
++  private:
++    double m_aoiBeta{0.01};
++};
++
++} // namespace ns3
+diff --git a/model/nr-mac-scheduler-ue-info-aoi.cc b/model/nr-mac-scheduler-ue-info-aoi.cc
+new file mode 100644
+index 00000000..8fbbb555
+--- /dev/null
++++ b/model/nr-mac-scheduler-ue-info-aoi.cc
+@@ -0,0 +1,19 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include "nr-mac-scheduler-ue-info-aoi.h"
++
++#include <ns3/log.h>
++
++namespace ns3
++{
++
++NS_LOG_COMPONENT_DEFINE("NrMacSchedulerUeInfoAoi");
++
++// All logic is in the header (inline / inherited from EDF).
++// This translation unit exists only to satisfy the build system and to
++// anchor the log component so NS_LOG=NrMacSchedulerUeInfoAoi works.
++
++} // namespace ns3
+diff --git a/model/nr-mac-scheduler-ue-info-aoi.h b/model/nr-mac-scheduler-ue-info-aoi.h
+new file mode 100644
+index 00000000..41ca1269
+--- /dev/null
++++ b/model/nr-mac-scheduler-ue-info-aoi.h
+@@ -0,0 +1,133 @@
++/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
++
++// Copyright (c) 2026
++// SPDX-License-Identifier: GPL-2.0-only
++
++#pragma once
++
++#include "nr-mac-scheduler-ue-info-edf.h"
++
++#include <ns3/simulator.h>
++
++#include <cmath>
++
++namespace ns3
++{
++
++/**
++ * \ingroup scheduler
++ * \brief Per-UE state for the AoI-aware proportional-fair MAC scheduler.
++ *
++ * Extends NrMacSchedulerUeInfoEdf with an Age-of-Information (AoI) term that
++ * is blended into the DL scheduling weight:
++ *
++ *   weight = max(urgency, ε) × (aoi_factor + PF_factor)
++ *
++ * where:
++ *   urgency      = EDF deadline/reliability term (inherited)
++ *   aoi_factor   = m_aoiBeta × (Simulator::Now() - m_lastTxTime) in ms
++ *   PF_factor    = potentialTput^α / avgTput
++ *
++ * When m_aoiBeta = 0 the scheduler degenerates to EDF.
++ * Default m_aoiBeta = 0.01 gives an AoI contribution of ~1 per 100 ms of
++ * inactivity, which is clearly distinguishable from the PF term at 8-20 ms
++ * link delays.
++ *
++ * The UL comparator is inherited unchanged from NrMacSchedulerUeInfoEdf.
++ */
++class NrMacSchedulerUeInfoAoi : public NrMacSchedulerUeInfoEdf
++{
++  public:
++    NrMacSchedulerUeInfoAoi(float alpha,
++                            double aoiBeta,
++                            uint16_t rnti,
++                            BeamConfId beamConfId,
++                            const GetRbPerRbgFn& fn)
++        : NrMacSchedulerUeInfoEdf(alpha, rnti, beamConfId, fn),
++          m_aoiBeta(aoiBeta)
++    {
++    }
++
++    /**
++     * \brief Call after a successful DL transmission to record the TX time
++     *        and reset the AoI accumulator.
++     */
++    void OnDlTransmission()
++    {
++        m_lastTxTime = Simulator::Now();
++        m_aoiMs = 0.0;
++    }
++
++    /**
++     * \brief Return the current AoI for this UE in milliseconds.
++     *
++     * This is the time elapsed since the last successful DL transmission.
++     * If the UE has never been scheduled m_lastTxTime is zero and we return
++     * the simulation time as the AoI (i.e. the UE has been waiting since
++     * the beginning).
++     */
++    double GetAoiMs() const
++    {
++        return (Simulator::Now() - m_lastTxTime).GetMilliSeconds();
++    }
++
++    // ----------------------------------------------------------------
++    //  DL weight — AoI-PF hybrid
++    // ----------------------------------------------------------------
++
++    static bool CompareUeWeightsDl(const NrMacSchedulerNs3::UePtrAndBufferReq& lue,
++                                   const NrMacSchedulerNs3::UePtrAndBufferReq& rue)
++    {
++        return CalculateDlWeightAoi(lue) > CalculateDlWeightAoi(rue);
++    }
++
++    static double CalculateDlWeightAoi(const NrMacSchedulerNs3::UePtrAndBufferReq& ue)
++    {
++        auto uePtr = dynamic_cast<NrMacSchedulerUeInfoAoi*>(ue.first.get());
++
++        // --- EDF urgency term (inherited logic, inlined) ---
++        double urgencyWeight = 0.0;
++        for (const auto& ueLcg : ue.first->m_dlLCG)
++        {
++            std::vector<uint8_t> lcIds = ueLcg.second->GetLCId();
++            for (const auto lcId : lcIds)
++            {
++                const NrMacSchedulerLC* lc = ueLcg.second->GetLC(lcId);
++                if (lc == nullptr || lc->GetTotalSize() == 0)
++                {
++                    continue;
++                }
++                const double delayBudgetMs =
++                    static_cast<double>(lc->m_delayBudget.GetMilliSeconds());
++                const double holDelayMs =
++                    static_cast<double>(lc->m_rlcTransmissionQueueHolDelay);
++                const double remainingBudget = std::max(0.1, delayBudgetMs - holDelayMs);
++                const double delayUrgency =
++                    delayBudgetMs > 0.0 ? (delayBudgetMs / remainingBudget)
++                                        : (1.0 / remainingBudget);
++                urgencyWeight += delayUrgency * (1.0 / std::max(1E-9, lc->m_PER));
++            }
++        }
++
++        // --- AoI additive term: β × age_ms ---
++        const double aoiMs = uePtr->GetAoiMs();
++        const double aoiFactor = uePtr->m_aoiBeta * aoiMs;
++
++        // --- PF multiplicative term ---
++        const double pfFactor =
++            std::pow(std::max(1E-9, uePtr->m_potentialTputDl), uePtr->m_alpha) /
++            std::max(1E-9, uePtr->m_avgTputDl);
++
++        // Weight = urgency × (AoI_boost + PF)
++        return std::max(1E-9, urgencyWeight) * (aoiFactor + std::max(1.0, pfFactor));
++    }
++
++    // ----------------------------------------------------------------
++    //  State
++    // ----------------------------------------------------------------
++    Time   m_lastTxTime{};      ///< Simulation time of last DL frame assignment
++    double m_aoiMs{0.0};        ///< Cached AoI in ms (informational; GetAoiMs() is live)
++    double m_aoiBeta{0.01};     ///< AoI weight coefficient
++};
++
++} // namespace ns3
+--- /tmp/remote_robot_control_before.cc	2026-03-22 17:36:58.619101874 +0530
++++ /home/acharya/simulation/CORNET3.0/network/ns-3/scratch/remote_robot_control.cc	2026-03-22 17:28:31.450972351 +0530
+@@ -17,6 +17,7 @@
+ #include "ns3/nr-module.h"
+ #include "ns3/nr-helper.h"
+ #include "ns3/nr-mac-scheduler-ofdma-edf.h"
++#include "ns3/nr-mac-scheduler-ofdma-aoi.h"
+ #include "ns3/nr-point-to-point-epc-helper.h"
+ #include "ns3/ideal-beamforming-helper.h"
+ #include "ns3/cc-bwp-helper.h"
+@@ -104,6 +105,7 @@
+     uint16_t symbolsPerSlot = 14;
+     std::string tddPattern = ""; // Empty = use NR default
+     std::string schedulerType = "";
++    double aoiBeta = 0.01;          // AoI weight coefficient for "aoi" scheduler
+     bool prbRandomAllocation = false;
+     uint32_t pdcpRepetitions = 0;
+     uint32_t pdcpRepDelayMs = 1;
+@@ -133,7 +135,8 @@
+     cmd.AddValue("tbDecodeLatencyUs", "TB decode latency in microseconds", tbDecodeLatencyUs);
+     cmd.AddValue("symbolsPerSlot", "Symbols per slot (14 or 7 for mini-slots)", symbolsPerSlot);
+     cmd.AddValue("tddPattern", "TDD pattern string e.g. F|F|F|F|F|F|F|F|F|F|", tddPattern);
+-    cmd.AddValue("schedulerType", "NR scheduler type (rr or edf)", schedulerType);
++    cmd.AddValue("schedulerType", "NR scheduler type (rr, edf, or aoi)", schedulerType);
++    cmd.AddValue("aoiBeta", "AoI weight coefficient for aoi scheduler (default: 0.01)", aoiBeta);
+     cmd.AddValue("prbRandomAllocation", "Randomize PRB assignment order per slot (frequency diversity)", prbRandomAllocation);
+     cmd.AddValue("pdcpRepetitions", "Number of extra PDCP PDU copies (0 = off)", pdcpRepetitions);
+     cmd.AddValue("pdcpRepDelayMs", "Delay between successive PDCP copies (ms)", pdcpRepDelayMs);
+@@ -316,7 +319,11 @@
+         {
+             nrHelper->SetSchedulerTypeId(NrMacSchedulerOfdmaRR::GetTypeId());
+         }
+-
++        else if (schedulerType == "aoi")
++        {
++            nrHelper->SetSchedulerTypeId(NrMacSchedulerOfdmaAoi::GetTypeId());
++            nrHelper->SetSchedulerAttribute("AoIBeta", DoubleValue(aoiBeta));
++        }
+ 
+         // ---- URLLC / Configured-Grant emulation ----
+         // Based on: A. Larrañaga et al., "An open-source implementation and

@@ -1,0 +1,170 @@
+diff --git a/src/lte/helper/lte-helper.cc b/src/lte/helper/lte-helper.cc
+index c5397a26a..1db443718 100644
+--- a/src/lte/helper/lte-helper.cc
++++ b/src/lte/helper/lte-helper.cc
+@@ -1004,7 +1004,7 @@ LteHelper::InstallSingleUeDevice(Ptr<Node> n)
+     dev->SetAttribute("LteUeComponentCarrierManager", PointerValue(ccmUe));
+     // \todo The UE identifier should be dynamically set by the EPC
+     // when the default PDP context is created. This is a simplification.
+-    dev->SetAddress(Mac64Address::Allocate());
++    dev->SetAddress(Mac48Address::Allocate());
+ 
+     for (std::map<uint8_t, Ptr<ComponentCarrierUe>>::iterator it = ueCcMap.begin();
+          it != ueCcMap.end();
+diff --git a/src/lte/model/lte-net-device.cc b/src/lte/model/lte-net-device.cc
+index e59891114..1e0c57495 100644
+--- a/src/lte/model/lte-net-device.cc
++++ b/src/lte/model/lte-net-device.cc
+@@ -97,7 +97,7 @@ void
+ LteNetDevice::SetAddress(Address address)
+ {
+     NS_LOG_FUNCTION(this << address);
+-    m_address = Mac64Address::ConvertFrom(address);
++    m_address = Mac48Address::ConvertFrom(address);
+ }
+ 
+ Address
+diff --git a/src/lte/model/lte-net-device.h b/src/lte/model/lte-net-device.h
+index f4a319692..d8fae3e8e 100644
+--- a/src/lte/model/lte-net-device.h
++++ b/src/lte/model/lte-net-device.h
+@@ -24,7 +24,7 @@
+ #include <ns3/event-id.h>
+ #include <ns3/lte-control-messages.h>
+ #include <ns3/lte-phy.h>
+-#include <ns3/mac64-address.h>
++#include <ns3/mac48-address.h>
+ #include <ns3/net-device.h>
+ #include <ns3/nstime.h>
+ #include <ns3/traced-callback.h>
+@@ -110,7 +110,7 @@ class LteNetDevice : public NetDevice
+     bool m_linkUp;          ///< link uo
+     mutable uint16_t m_mtu; ///< MTU
+ 
+-    Mac64Address m_address; ///< MAC address - only relevant for UEs.
++    Mac48Address m_address; ///< MAC address - only relevant for UEs (Mac48 for TapBridge compat).
+ };
+ 
+ } // namespace ns3
+diff --git a/src/lte/model/lte-pdcp.cc b/src/lte/model/lte-pdcp.cc
+index e77bf4e58..89ebd49f5 100644
+--- a/src/lte/model/lte-pdcp.cc
++++ b/src/lte/model/lte-pdcp.cc
+@@ -24,6 +24,7 @@
+ #include "ns3/lte-pdcp-sap.h"
+ #include "ns3/lte-pdcp-tag.h"
+ #include "ns3/simulator.h"
++#include "ns3/uinteger.h"
+ 
+ namespace ns3
+ {
+@@ -92,6 +93,16 @@ LtePdcp::GetTypeId()
+     static TypeId tid = TypeId("ns3::LtePdcp")
+                             .SetParent<Object>()
+                             .SetGroupName("Lte")
++                            .AddAttribute("PdcpRepetitions",
++                                          "Number of extra PDCP PDU copies sent (0 = off, 1 = one extra, 2 = two extra, etc.)",
++                                          UintegerValue(0),
++                                          MakeUintegerAccessor(&LtePdcp::m_numRepetitions),
++                                          MakeUintegerChecker<uint8_t>(0, 4))
++                            .AddAttribute("PdcpRepetitionDelayMs",
++                                          "Delay between successive PDCP PDU copies (ms)",
++                                          UintegerValue(1),
++                                          MakeUintegerAccessor(&LtePdcp::m_repetitionDelayMs),
++                                          MakeUintegerChecker<uint32_t>(0, 100))
+                             .AddTraceSource("TxPDU",
+                                             "PDU transmission notified to the RLC.",
+                                             MakeTraceSourceAccessor(&LtePdcp::m_txPdu),
+@@ -203,6 +214,15 @@ LtePdcp::DoTransmitPdcpSdu(LtePdcpSapProvider::TransmitPdcpSduParameters params)
+     txParams.pdcpPdu = p;
+ 
+     m_rlcSapProvider->TransmitPdcpPdu(txParams);
++
++    // PDCP repetition: schedule N extra copies of the same PDU (same SN)
++    for (uint8_t i = 1; i <= m_numRepetitions; i++)
++    {
++        Simulator::Schedule(MilliSeconds(m_repetitionDelayMs * i),
++                            &LtePdcp::SendRepetition,
++                            this,
++                            p->Copy());
++    }
+ }
+ 
+ void
+@@ -221,6 +241,23 @@ LtePdcp::DoReceivePdu(Ptr<Packet> p)
+     p->RemoveHeader(pdcpHeader);
+     NS_LOG_LOGIC("PDCP header: " << pdcpHeader);
+ 
++    // Duplicate filtering when PDCP repetition is active
++    if (m_numRepetitions > 0)
++    {
++        uint16_t sn = pdcpHeader.GetSequenceNumber();
++        if (m_rxDupSns.count(sn) > 0)
++        {
++            NS_LOG_INFO("PDCP: dropping duplicate PDU, SN=" << sn);
++            return;
++        }
++        m_rxDupSns.insert(sn);
++        // Prune the seen-SN set to prevent unbounded growth
++        if (m_rxDupSns.size() > 64)
++        {
++            m_rxDupSns.clear();
++        }
++    }
++
+     m_rxSequenceNumber = pdcpHeader.GetSequenceNumber() + 1;
+     if (m_rxSequenceNumber > m_maxPdcpSn)
+     {
+@@ -234,4 +271,15 @@ LtePdcp::DoReceivePdu(Ptr<Packet> p)
+     m_pdcpSapUser->ReceivePdcpSdu(params);
+ }
+ 
++void
++LtePdcp::SendRepetition(Ptr<Packet> p)
++{
++    NS_LOG_FUNCTION(this << m_rnti << static_cast<uint16_t>(m_lcid) << p->GetSize());
++    LteRlcSapProvider::TransmitPdcpPduParameters txParams;
++    txParams.rnti = m_rnti;
++    txParams.lcid = m_lcid;
++    txParams.pdcpPdu = p;
++    m_rlcSapProvider->TransmitPdcpPdu(txParams);
++}
++
+ } // namespace ns3
+diff --git a/src/lte/model/lte-pdcp.h b/src/lte/model/lte-pdcp.h
+index 41717fe3d..d9a81af74 100644
+--- a/src/lte/model/lte-pdcp.h
++++ b/src/lte/model/lte-pdcp.h
+@@ -26,6 +26,8 @@
+ #include "ns3/trace-source-accessor.h"
+ #include "ns3/traced-value.h"
+ 
++#include <unordered_set>
++
+ namespace ns3
+ {
+ 
+@@ -148,6 +150,12 @@ class LtePdcp : public Object // SimpleRefCount<LtePdcp>
+      */
+     virtual void DoTransmitPdcpSdu(LtePdcpSapProvider::TransmitPdcpSduParameters params);
+ 
++    /**
++     * \brief Helper called by Simulator::Schedule to send a PDCP PDU repetition.
++     * \param p Already-header'd packet including PDCP header and tag
++     */
++    void SendRepetition(Ptr<Packet> p);
++
+     LtePdcpSapUser* m_pdcpSapUser;         ///< PDCP SAP user
+     LtePdcpSapProvider* m_pdcpSapProvider; ///< PDCP SAP provider
+ 
+@@ -189,6 +197,10 @@ class LtePdcp : public Object // SimpleRefCount<LtePdcp>
+      * Constants. See section 7.2 in TS 36.323
+      */
+     static const uint16_t m_maxPdcpSn = 4095;
++
++    uint8_t m_numRepetitions{0};    //!< Number of extra copies sent for PDCP repetition (0 = off)
++    uint32_t m_repetitionDelayMs{1}; //!< Delay between successive copies (ms)
++    std::unordered_set<uint16_t> m_rxDupSns; //!< Receiver-side seen-SNs for duplicate filtering
+ };
+ 
+ } // namespace ns3

@@ -66,7 +66,21 @@ python -m cornet view tasks/pendulum_nr_control
 
 This prints a `rich` table sorted by the configured primary metric.
 
-## 6. Develop with OpenSpec
+## 6. Guides
+
+Go deeper with the topic guides:
+
+| Guide | Description |
+|---|---|
+| [Writing a Task](guides/writing-a-task.md) | Create a new task: directory layout, config.yaml, EvalTool, leaderboard |
+| [Custom Plugin](guides/custom-plugin.md) | Implement a network or robot plugin using the Plugin ABC |
+| [Custom EvalTool](guides/custom-eval-tool.md) | Extract metrics from experiment output with EvalTool |
+| [Parameter Sweep](guides/parameter-sweep.md) | Sweep parameters across runs; understand variant IDs and output layout |
+| [Middleware](guides/middleware.md) | AoI tracker, physics clock, packet dispatcher, and TUN manager |
+
+---
+
+## 7. Develop with OpenSpec
 
 CORNET uses an OpenSpec workflow for tracking framework changes. The phases are:
 
