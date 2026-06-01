@@ -38,5 +38,21 @@
     "metric": 0.25,
     "output_dir": "/tmp/pytest-of-acharya/pytest-14/test_example_tasks_write_leade0/uav_results",
     "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-06-01T09:24:47.167142",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-15/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-06-01T09:50:06.689953",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-16/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
   }
 ]

@@ -1,7 +1,7 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Plugin lifecycle contract
-Every network and robot plugin SHALL implement the `Plugin` abstract base class defined in `cornet/plugins/base.py` with the following lifecycle methods: `configure(config, context)`, `start()`, `run()`, `stop()`, `collect(output_dir)`. The orchestrator SHALL call these in order and SHALL NOT call a later step if an earlier step raises an exception. The `output_dir` argument to `collect()` SHALL be the same directory passed to the orchestrator's `run()` call, and SHALL be created by the orchestrator before `collect()` is invoked.
+Every network and robot plugin SHALL implement the `Plugin` abstract base class defined in `framework/plugins/base.py` with the following lifecycle methods: `configure(config, context)`, `start()`, `run()`, `stop()`, `collect(output_dir)`. The orchestrator SHALL call these in order and SHALL NOT call a later step if an earlier step raises an exception.
 
 #### Scenario: Lifecycle methods called in order
 - **WHEN** the orchestrator runs an experiment
@@ -17,25 +17,32 @@ Every network and robot plugin SHALL implement the `Plugin` abstract base class 
 - **THEN** the orchestrator SHALL NOT call `run()` or `collect()`
 - **THEN** the exception message SHALL be logged with the plugin name
 
-## ADDED Requirements
+### Requirement: Plugin registry and config-driven loading
+The orchestrator SHALL load plugins by names declared in the config (`network.plugin` and `robot.plugin` fields). The plugin registry in `framework/plugins/__init__.py` SHALL map string names to plugin classes. Unknown plugin names SHALL raise `PluginNotFoundError` at config-validation time, before any process is started.
 
-### Requirement: output_dir created before collect() is called
-The orchestrator SHALL create `output_dir` (with `os.makedirs(output_dir, exist_ok=True)`) before calling any plugin's `collect(output_dir)`. Plugins SHALL be able to write files into `output_dir` from within `collect()` without creating the directory themselves.
+#### Scenario: NS-3 network plugin loaded by name
+- **WHEN** config sets `network.plugin: ns3`
+- **THEN** the orchestrator SHALL instantiate `Ns3Plugin` and pass the `network` config section to its `configure()` method
 
-#### Scenario: output_dir exists when collect() is called
-- **WHEN** the orchestrator calls `collect(output_dir)` on a plugin
-- **THEN** `os.path.isdir(output_dir)` SHALL be `True` at the time `collect()` is entered
-- **THEN** the plugin SHALL be able to write `open(os.path.join(output_dir, "results.json"), "w")` without raising `FileNotFoundError`
+#### Scenario: Mininet network plugin loaded by name
+- **WHEN** config sets `network.plugin: mininet`
+- **THEN** the orchestrator SHALL instantiate `MininetPlugin`
 
-#### Scenario: output_dir creation is idempotent
-- **WHEN** `output_dir` already exists
-- **THEN** the orchestrator SHALL NOT raise an exception (uses `exist_ok=True`)
+#### Scenario: Unknown plugin raises error before start
+- **WHEN** config sets `network.plugin: unknown_backend`
+- **THEN** `orchestrator.load_plugins()` SHALL raise `PluginNotFoundError` before calling any lifecycle method
 
-### Requirement: Preflight CAP_NET_ADMIN check for NS-3 plugin with middleware
-When `network.plugin: ns3` and `middleware.enabled: true`, the orchestrator SHALL verify that the process has root privileges (UID = 0) or `CAP_NET_ADMIN` capability before calling `Ns3Plugin.configure()`. If the check fails, the orchestrator SHALL print `"ERROR: NS-3 middleware requires root or CAP_NET_ADMIN. Run with sudo."` and exit with code 1. Experiments without middleware SHALL NOT require elevated privileges.
+### Requirement: Shared experiment context passed between plugins
+The orchestrator SHALL maintain an `ExperimentContext` dataclass and pass it to every plugin's `configure()`. Plugins SHALL write outputs (e.g. IP addresses, bridge names, socket paths) into `context` and SHALL read from it to obtain inputs from sibling plugins.
 
-#### Scenario: NS-3 + middleware without root exits cleanly
-- **WHEN** `middleware.enabled: true` and the process UID is not 0
-- **THEN** the orchestrator SHALL print the root error message and exit with code 1
-- **THEN** no TUN interfaces SHALL be created
-- **THEN** no NS-3 subprocess SHALL be launched
+#### Scenario: Network plugin writes IPs, robot plugin reads them
+- **WHEN** the Mininet plugin completes `start()` and writes `context.network.node_ips`
+- **THEN** the Gazebo robot plugin's `configure()` (called after network configure) SHALL be able to read `context.network.node_ips` to configure robot-to-node IP bindings
+
+### Requirement: Preflight root check for Mininet plugin
+The orchestrator SHALL detect whether the process has root privileges before calling `MininetPlugin.configure()`. If root is not available, the orchestrator SHALL log a clear error message and exit without starting any plugins.
+
+#### Scenario: No root raises descriptive error
+- **WHEN** `network.plugin: mininet` and the process UID is not 0
+- **THEN** the orchestrator SHALL print `"ERROR: Mininet plugin requires root. Run with sudo."` and exit with code 1
+- **THEN** no plugins SHALL be started

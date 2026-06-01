@@ -1,47 +1,33 @@
 ## ADDED Requirements
 
-### Requirement: MiddlewareConfig added to NetworkConfig
-`NetworkConfig` SHALL accept an optional `middleware: MiddlewareConfig | None` field (default `None`). `MiddlewareConfig` SHALL have fields: `enabled: bool = False`, `ip_list: list[str] = []`, `rtf: float = 1.0`, `deadline_s: float = 0.5`, `ber: float = 0.0`, `clock_timeout_s: float = 5.0`, `clock_socket: str = "/tmp/cornet_clock.sock"`, `positions_socket: str = "/tmp/cornet_positions.sock"`. When `middleware.enabled` is absent or `False`, the field SHALL be ignored by all plugins.
+### Requirement: Unified YAML config schema for network and robot deployment
+The framework SHALL define a single Pydantic v2 model (`UnifiedConfig`) in `framework/config/schema.py` that validates a task config YAML covering both `network` and `robot` top-level sections. The schema SHALL be the authoritative definition for all new task configs. The `config_manager.load_unified()` function SHALL raise a descriptive `ConfigValidationError` listing every field violation when validation fails.
 
-#### Scenario: MiddlewareConfig loads from YAML
-- **WHEN** config YAML contains `network.middleware.enabled: true` and `network.middleware.ip_list: ["10.0.0.1"]`
-- **THEN** `config.network.middleware.enabled` SHALL be `True`
-- **THEN** `config.network.middleware.ip_list` SHALL equal `["10.0.0.1"]`
+#### Scenario: Valid unified config loads without error
+- **WHEN** a YAML file contains valid `network`, `robot`, and `experiment` sections matching the schema
+- **THEN** `config_manager.load_unified(path)` SHALL return a populated `UnifiedConfig` instance with no exceptions
 
-#### Scenario: MiddlewareConfig absent defaults to disabled
-- **WHEN** config YAML has no `middleware` key under `network`
-- **THEN** `config.network.middleware` SHALL be `None`
-- **THEN** no middleware SHALL be activated by any plugin
+#### Scenario: Missing required field raises descriptive error
+- **WHEN** the YAML is missing `network.type`
+- **THEN** `load_unified()` SHALL raise `ConfigValidationError` with a message identifying the missing field by dotted path (e.g. `network.type`)
 
-### Requirement: MobilityConfig added to NetworkConfig
-`NetworkConfig` SHALL accept an optional `mobility: MobilityConfig | None` field (default `None`). `MobilityConfig` SHALL have fields: `enabled: bool = False`, `source: str = "socket"`, `update_hz: float = 10.0`, `update_mode: Literal["periodic","threshold","step_aligned"] = "periodic"`, `position_threshold_m: float = 0.5`. When `mobility.enabled` is `False` (default), no position updates SHALL be sent to plugins after startup.
+#### Scenario: Network type validation
+- **WHEN** `network.type` is set to a value other than `ns3`, `mininet`, or `ns3+mininet`
+- **THEN** `load_unified()` SHALL raise `ConfigValidationError` with the allowed values listed
 
-#### Scenario: MobilityConfig defaults to disabled
-- **WHEN** config has no `mobility` key
-- **THEN** `config.network.mobility` SHALL be `None`
-- **THEN** `PositionBroadcaster` SHALL NOT be started
+#### Scenario: Robot section is optional
+- **WHEN** the YAML omits the `robot` section entirely
+- **THEN** `load_unified()` SHALL succeed and set `config.robot` to `None`
+- **THEN** the orchestrator SHALL skip all robot plugins
 
-#### Scenario: MobilityConfig validates update_mode
-- **WHEN** `mobility.update_mode: invalid_mode` is in the config
-- **THEN** `load_unified()` SHALL raise `ConfigValidationError` listing valid modes
+### Requirement: Backward-compatible loading of legacy scenario YAMLs
+The `config_manager` SHALL continue to load all existing `scenarios/*.yaml` files using the legacy loader path without any changes to those files.
 
-### Requirement: ScenarioConfig added as optional NetworkConfig field
-`NetworkConfig` SHALL accept an optional `scenario: ScenarioConfig | None` field (default `None`). `ScenarioConfig` SHALL have fields: `profile: Literal["5g_nr_urllc","5g_nr_embb","5g_nr_mmtc","6g_thz"]`, `numerology: int | None = None`, `bandwidth_mhz: float | None = None`, `scheduler: str | None = None`, `experimental: bool = False`.
-
-#### Scenario: ScenarioConfig profile validated at load
-- **WHEN** `scenario.profile: 5g_nr_urllc` is set
-- **THEN** `config.network.scenario.profile` SHALL equal `"5g_nr_urllc"`
+#### Scenario: Legacy scenario YAML loads via fallback
+- **WHEN** a YAML file lacks a `network.type` field but has the legacy `network.nr` or `network.lte` structure
+- **THEN** `config_manager.load(path)` SHALL use the legacy loader and return the existing config dict
 - **THEN** no `ConfigValidationError` SHALL be raised
 
-### Requirement: NodeConfig gains first-class ip, position, and model_name fields
-`NodeConfig` SHALL add: `ip: str | None = None`, `x: float | None = None`, `y: float | None = None`, `z: float | None = None`, `model_name: str | None = None`. The `model_name` field SHALL identify nodes that are tracked by `PositionBroadcaster` for live position updates. Nodes without `model_name` SHALL use static `(x, y, z)` sent once at startup. The `extra="allow"` policy SHALL remain so legacy fields continue to work.
-
-#### Scenario: NodeConfig loads ip and position fields
-- **WHEN** node config is `{name: ue1, type: UE, ip: "10.0.0.1", x: 5.0, y: 3.0, z: 0.0}`
-- **THEN** `node.ip` SHALL equal `"10.0.0.1"`
-- **THEN** `node.x` SHALL equal `5.0`
-
-#### Scenario: NodeConfig without model_name is treated as static
-- **WHEN** a node has `x: 5.0, y: 3.0` but no `model_name`
-- **THEN** `PositionBroadcaster` SHALL use the static `(x, y, z)` values
-- **THEN** no dynamic position subscription SHALL be made for this node
+#### Scenario: Explicit new-format detection
+- **WHEN** a YAML contains `_schema: unified-v1` at the top level
+- **THEN** `config_manager.load(path)` SHALL use `load_unified()` exclusively and not fall back to the legacy loader
