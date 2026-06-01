@@ -99,3 +99,22 @@ def test_sweep_config(tmp_path: Path) -> None:
     cfg = load_unified(write_yaml(tmp_path, content))
     assert cfg.experiment.sweep is not None
     assert cfg.experiment.sweep.repeats == 2
+
+
+def test_scenario_profile_validation(tmp_path: Path) -> None:
+    content = VALID_YAML.replace(
+    "  nodes:",
+    "  scenario:\n    profile: 5g_nr_urllc\n  nodes:",
+    )
+    cfg = load_unified(write_yaml(tmp_path, content))
+    assert cfg.network.scenario is not None
+    assert cfg.network.scenario.profile == "5g_nr_urllc"
+
+
+def test_invalid_scenario_profile_raises(tmp_path: Path) -> None:
+    content = VALID_YAML.replace(
+    "  nodes:",
+    "  scenario:\n    profile: invalid_profile\n  nodes:",
+    )
+    with pytest.raises(ConfigValidationError, match="scenario.profile must be one of"):
+        load_unified(write_yaml(tmp_path, content))

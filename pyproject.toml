@@ -19,9 +19,15 @@ dev = [
     "pytest>=7.0",
     "pytest-cov",
 ]
+ros2 = [
+]
+ros1 = [
+]
 
 [project.scripts]
 cornet = "cornet.__main__:main"
+cornet-bridge-ros2 = "cornet.bridges.ros2_bridge:main"
+cornet-bridge-ros1 = "cornet.bridges.ros1_bridge:main"
 
 [project.urls]
 Homepage = "https://github.com/rbccps-iisc/CORNET"

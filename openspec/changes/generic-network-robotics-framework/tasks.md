@@ -7,7 +7,7 @@
 - [ ] 0.5 Create `docs/LINEAGE.md` documenting CORNET 1.0 → 2.0 → 3.0 → CORNET (flagship) with citations and URLs for each generation
 - [ ] 0.6 Add `docs/INSTALL.md` listing system prerequisites (NS-3 build, Mininet-WiFi, Gazebo, ROS 2 Humble) with install commands
 - [ ] 0.7 Add CI workflow `.github/workflows/test.yml`: `pip install -e .[dev]` + `pytest tests/` on ubuntu-latest
-- [ ] 0.8 Update `srikrishna3118/CORNET` README.md header to: "⚠️ This is CORNET 1.0 (archived). The current flagship is [rbccps-iisc/CORNET](https://github.com/rbccps-iisc/CORNET)." — submit as a PR to that repo
+- [x] 0.8 Update `srikrishna3118/CORNET` README.md header to: "⚠️ This is CORNET 1.0 (archived). The current flagship is [rbccps-iisc/CORNET](https://github.com/rbccps-iisc/CORNET)." — submit as a PR to that repo
 - [ ] 0.9 Initialize OpenSpec in the new repo: `cd /home/acharya/simulation/CORNET_Research && openspec init` (selects GitHub Copilot); copy the `openspec/changes/generic-network-robotics-framework/` artifacts from CORNET3.0 into the new repo's OpenSpec so the change history travels with the code
 
 ## 1. Framework Package Skeleton

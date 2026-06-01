@@ -18,6 +18,22 @@ import cornet.plugins as _registry
 logger = logging.getLogger(__name__)
 
 
+def _has_cap_net_admin() -> bool:
+    """Return True if the process has CAP_NET_ADMIN (bit 12 of CapEff)."""
+    if os.geteuid() == 0:
+        return True
+    try:
+        from pathlib import Path as _Path
+        status = _Path("/proc/self/status").read_text()
+        for line in status.splitlines():
+            if line.startswith("CapEff:"):
+                cap_eff = int(line.split(":")[1].strip(), 16)
+                return bool(cap_eff & (1 << 12))
+    except Exception:
+        pass
+    return False
+
+
 class Orchestrator:
     """Drives the full CORNET experiment lifecycle.
 
@@ -157,13 +173,28 @@ class Orchestrator:
                 logger.debug("Auto-discovered world: %s", config.robot.world)
 
     def _preflight(self, config: UnifiedConfig) -> None:
-        """Abort early if Mininet plugin is requested but process is not root."""
+        """Abort early if required privileges or capabilities are missing."""
         mininet_plugins = {"mininet", "ns3+mininet"}
         if config.network.plugin in mininet_plugins and os.getuid() != 0:
             logger.error(
                 "Plugin '%s' requires root. Re-run with sudo.", config.network.plugin
             )
             sys.exit(1)
+
+        # NS-3 with middleware enabled requires CAP_NET_ADMIN for TUN creation
+        mw = config.network.middleware
+        if (
+            config.network.plugin in {"ns3", "ns3+mininet"}
+            and mw is not None
+            and mw.enabled
+        ):
+            if not _has_cap_net_admin():
+                logger.error(
+                    "NS-3 middleware requires CAP_NET_ADMIN to create TUN interfaces. "
+                    "Re-run with sudo, or grant the capability:\n"
+                    "  sudo setcap cap_net_admin+ep $(which python3)"
+                )
+                sys.exit(1)
 
     def _load_plugins(self, config: UnifiedConfig) -> list[Plugin]:
         """Instantiate network and robot plugins from the registry."""

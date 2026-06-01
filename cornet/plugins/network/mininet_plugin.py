@@ -37,12 +37,25 @@ class MininetPlugin(Plugin):
         self._config = None
         self._context = None
         self._container_ids: list[str] = []
+        self._use_containernet = False
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def configure(self, config: "UnifiedConfig", context: "ExperimentContext") -> None:
         self._config = config
         self._context = context
+        self._use_containernet = any(
+            node.container is not None and bool(node.container.image)
+            for node in config.network.nodes
+        )
+
+        if self._use_containernet:
+            try:
+                from containernet.net import Containernet  # noqa: F401, PLC0415
+            except ImportError as exc:
+                raise ImportError(
+                    "containernet not installed. Install with: pip install containernet or see INSTALL.md"
+                ) from exc
 
         # Pre-pull Docker images for container nodes
         for node in config.network.nodes:
@@ -58,27 +71,32 @@ class MininetPlugin(Plugin):
                     logger.warning("Failed to pull %s: %s", node.container.image, exc.stderr.decode())
 
     def start(self) -> None:
-        try:
-            from mn_wifi.net import Mininet_wifi  # type: ignore[import]
-            from mn_wifi.link import wmediumd, adhoc  # type: ignore[import]
-        except ImportError as exc:
-            raise RuntimeError(
-                "mininet-wifi is not installed. Install it with: "
-                "git clone https://github.com/intrig-unicamp/mininet-wifi && "
-                "cd mininet-wifi && sudo util/install.sh -Wlnfv"
-            ) from exc
-
         cfg = self._config
         use_wmediumd = cfg.network.mininet and cfg.network.mininet.wmediumd
 
-        if use_wmediumd:
-            self._net = Mininet_wifi(link=wmediumd)
+        if self._use_containernet:
+            from containernet.net import Containernet  # type: ignore[import]
+
+            self._net = Containernet()
         else:
-            self._net = Mininet_wifi()
+            try:
+                from mn_wifi.net import Mininet_wifi  # type: ignore[import]
+                from mn_wifi.link import wmediumd  # type: ignore[import]
+            except ImportError as exc:
+                raise RuntimeError(
+                    "mininet-wifi is not installed. Install it with: "
+                    "git clone https://github.com/intrig-unicamp/mininet-wifi && "
+                    "cd mininet-wifi && sudo util/install.sh -Wlnfv"
+                ) from exc
+
+            if use_wmediumd:
+                self._net = Mininet_wifi(link=wmediumd)
+            else:
+                self._net = Mininet_wifi()
 
         self._build_topology(cfg.network.nodes)
 
-        if use_wmediumd:
+        if use_wmediumd and not self._use_containernet:
             self._net.setPropagationModel(model="logDistance", exp=3)
 
         self._net.build()
@@ -92,7 +110,11 @@ class MininetPlugin(Plugin):
                 self._context.network.node_ips[node.name] = ip
                 logger.debug("Node %s IP: %s", node.name, ip)
 
-        logger.info("Mininet-WiFi topology started (%d nodes)", len(cfg.network.nodes))
+        logger.info(
+            "%s topology started (%d nodes)",
+            "Containernet" if self._use_containernet else "Mininet-WiFi",
+            len(cfg.network.nodes),
+        )
 
     def run(self) -> None:
         pass  # topology runs passively; duration controlled by Orchestrator
@@ -123,11 +145,22 @@ class MininetPlugin(Plugin):
         for node in nodes:
             ntype = node.type.upper() if node.type else "MOBILE"
 
+            if self._use_containernet and node.container is not None:
+                docker_kwargs: dict[str, str | float] = {
+                    "dimage": node.container.image,
+                }
+                if node.ip:
+                    docker_kwargs["ip"] = node.ip
+                if node.container.cpu_quota is not None:
+                    docker_kwargs["cpu_quota"] = node.container.cpu_quota
+                if node.container.mem_limit_mb is not None:
+                    docker_kwargs["mem_limit"] = f"{node.container.mem_limit_mb}m"
+                self._net.addDocker(node.name, **docker_kwargs)
+                continue
+
             if ntype in ("MOBILE", "UE"):
-                self._net.addStation(
-                    node.name,
-                    **({"ip": node.model_extra.get("ip")} if hasattr(node, "model_extra") and node.model_extra.get("ip") else {}),
-                )
+                kwargs = {"ip": node.ip} if node.ip else {}
+                self._net.addStation(node.name, **kwargs)
             elif ntype in ("STATIC", "GNB"):
                 self._net.addAP(node.name, ssid=self._config.network.mininet.ssid if self._config.network.mininet else "cornet-net")
             else:

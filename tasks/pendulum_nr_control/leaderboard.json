@@ -6,5 +6,37 @@
     "metric": 12.0,
     "output_dir": "/tmp/pytest-of-acharya/pytest-4/test_example_tasks_write_leade0/pendulum_results",
     "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-01T04:32:31.030837",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-5/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-01T07:36:14.807004",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-6/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-01T08:47:42.496884",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-7/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-01T09:00:01.533956",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-14/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
   }
 ]
