@@ -5,7 +5,7 @@ from pathlib import Path
 from cornet.config.loader import load_unified
 
 
-TASK_ROOT = Path("/home/acharya/simulation/CORNET_Research/tasks")
+TASK_ROOT = Path(__file__).parent.parent / "tasks"
 
 
 def test_pendulum_task_config_loads() -> None:

@@ -62,5 +62,13 @@
     "metric": 12.0,
     "output_dir": "/tmp/pytest-of-acharya/pytest-17/test_example_tasks_write_leade0/pendulum_results",
     "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-01T11:27:01.817403",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-18/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
   }
 ]

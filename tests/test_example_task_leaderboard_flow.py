@@ -7,7 +7,7 @@ from cornet.config.loader import load_unified
 from cornet.orchestrator import Orchestrator
 
 
-TASK_ROOT = Path("/home/acharya/simulation/CORNET_Research/tasks")
+TASK_ROOT = Path(__file__).parent.parent / "tasks"
 
 
 def test_example_tasks_write_leaderboard_entries(tmp_path: Path) -> None:

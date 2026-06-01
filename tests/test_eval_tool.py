@@ -30,9 +30,8 @@ def test_pendulum_eval_tool_returns_mean_aoi(tmp_path: Path) -> None:
         )
     )
 
-    tool_cls = _load_eval_tool(
-        Path("/home/acharya/simulation/CORNET_Research/tasks/pendulum_nr_control/eval/eval_tool.py")
-    )
+    _TASKS = Path(__file__).parent.parent / "tasks"
+    tool_cls = _load_eval_tool(_TASKS / "pendulum_nr_control" / "eval" / "eval_tool.py")
     assert tool_cls().run_evaluation(str(results_dir)) == "SUCCESS, 12.000000"
 
 
@@ -50,9 +49,8 @@ def test_uav_eval_tool_returns_position_rms(tmp_path: Path) -> None:
         )
     )
 
-    tool_cls = _load_eval_tool(
-        Path("/home/acharya/simulation/CORNET_Research/tasks/uav_wifi_control/eval/eval_tool.py")
-    )
+    _TASKS = Path(__file__).parent.parent / "tasks"
+    tool_cls = _load_eval_tool(_TASKS / "uav_wifi_control" / "eval" / "eval_tool.py")
     assert tool_cls().run_evaluation(str(results_dir)) == "SUCCESS, 0.123456"
 
 
