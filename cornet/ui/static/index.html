@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CORNET UI</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+</head>
+<body>
+
+<header>
+  <h1>CORNET &mdash; <span id="task-name">loading…</span></h1>
+  <span id="badge" class="idle">● IDLE</span>
+</header>
+
+<main>
+  <!-- ── Leaderboard table ─────────────────────────────────── -->
+  <section id="section-table">
+    <h2>Runs</h2>
+    <div class="table-wrap">
+      <table id="lb-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Variant ID</th>
+            <th>Status</th>
+            <th>Metric</th>
+            <th>Timestamp</th>
+            <th>Output Dir</th>
+          </tr>
+        </thead>
+        <tbody id="lb-body">
+          <tr><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Plotter ───────────────────────────────────────────── -->
+  <section id="section-chart">
+    <h2>Plot</h2>
+    <div class="plotter-controls">
+      <label for="x-axis-select">X axis:</label>
+      <select id="x-axis-select"></select>
+    </div>
+    <div id="chart"></div>
+  </section>
+
+  <!-- ── Failure inspector ─────────────────────────────────── -->
+  <section>
+    <h2>Failures</h2>
+    <div id="failures-panel"></div>
+  </section>
+</main>
+
+<script>
+'use strict';
+
+// ─── Module state ────────────────────────────────────────────────────────────
+let allEntries = [];          // full leaderboard data
+let lastMtime  = 0;           // last observed leaderboard.json mtime
+
+// ─── Variant ID parsing (D2) ─────────────────────────────────────────────────
+
+/**
+ * Parse a variant_id string into a {key: value} map.
+ * Splits on '_' then rsplits each token on '=' (1 split, right-anchored).
+ * Returns {} on parse failure to trigger raw-label fallback.
+ */
+function parseVariantId(variantId) {
+  if (!variantId) return {};
+  const tokens = variantId.split('_');
+  const result = {};
+  for (const token of tokens) {
+    const eqIdx = token.lastIndexOf('=');
+    if (eqIdx <= 0) return {};  // empty key or no '=' → parse failure
+    const key = token.slice(0, eqIdx);
+    const val = token.slice(eqIdx + 1);
+    if (key.includes('=') || key === '') return {};  // validation failure
+    result[key] = val;
+  }
+  return result;
+}
+
+/**
+ * Remove trailing _run<N> suffix (e.g. bandwidth=20_run2 → bandwidth=20).
+ */
+function stripRunSuffix(variantId) {
+  return variantId.replace(/_run\d+$/, '');
+}
+
+/**
+ * Return the sorted union of all parameter keys across parsed variant_id values.
+ */
+function buildAxisKeys(entries) {
+  const keys = new Set();
+  for (const e of entries) {
+    const parsed = parseVariantId(stripRunSuffix(e.variant_id || ''));
+    for (const k of Object.keys(parsed)) keys.add(k);
+  }
+  return [...keys].sort();
+}
+
+/**
+ * Coerce an array of string values to numbers if all are finite numbers (D3).
+ * Otherwise returns the original string array.
+ */
+function coerceXValues(vals) {
+  const nums = vals.map(v => Number(v));
+  if (nums.every(n => isFinite(n))) return nums;
+  return vals;
+}
+
+// ─── Leaderboard table ───────────────────────────────────────────────────────
+
+function renderTable(entries) {
+  const tbody = document.getElementById('lb-body');
+  if (entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6">No runs yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map((e, i) => {
+    const statusClass = `status-${e.status || 'UNKNOWN'}`;
+    const failBadge = (e.status === 'FAILURE')
+      ? `<a class="badge-fail" href="#failures-panel" onclick="highlightFailure(${i})">[!]</a>`
+      : '';
+    const metric = (e.metric !== undefined && e.metric !== null)
+      ? Number(e.metric).toPrecision(6)
+      : '—';
+    const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : '—';
+    const outDir = e.output_dir
+      ? `<span title="${escHtml(e.output_dir)}">${escHtml(shortPath(e.output_dir))}</span>`
+      : '—';
+    return `<tr data-idx="${i}">
+      <td><input type="checkbox" class="row-cb" data-idx="${i}" checked /></td>
+      <td>${escHtml(e.variant_id || '—')}${failBadge}</td>
+      <td class="${statusClass}">${escHtml(e.status || '—')}</td>
+      <td>${metric}</td>
+      <td>${ts}</td>
+      <td>${outDir}</td>
+    </tr>`;
+  }).join('');
+
+  // Attach checkbox listeners
+  tbody.querySelectorAll('.row-cb').forEach(cb => {
+    cb.addEventListener('change', renderChart);
+  });
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function shortPath(p) {
+  const parts = p.split('/');
+  return parts.length > 3 ? '…/' + parts.slice(-2).join('/') : p;
+}
+
+// ─── Plotter ─────────────────────────────────────────────────────────────────
+
+function populateAxisDropdown(entries) {
+  const sel = document.getElementById('x-axis-select');
+  const current = sel.value;
+  const keys = buildAxisKeys(entries);
+  sel.innerHTML = keys.map(k =>
+    `<option value="${escHtml(k)}"${k === current ? ' selected' : ''}>${escHtml(k)}</option>`
+  ).join('');
+  // Preserve selection or default to first
+  if (!keys.includes(current) && keys.length > 0) sel.value = keys[0];
+}
+
+function getCheckedIndices() {
+  const checks = document.querySelectorAll('.row-cb:checked');
+  return new Set([...checks].map(cb => parseInt(cb.dataset.idx, 10)));
+}
+
+function renderChart() {
+  const xKey = document.getElementById('x-axis-select').value;
+  const checkedIdx = getCheckedIndices();
+  const chartDiv = document.getElementById('chart');
+
+  // Collect SUCCESS points
+  const successEntries = allEntries.filter((e, i) =>
+    checkedIdx.has(i) && e.status === 'SUCCESS'
+  );
+
+  if (successEntries.length === 0 || !xKey) {
+    Plotly.purge(chartDiv);
+    return;
+  }
+
+  // Build x, y, text arrays for individual points
+  const xs = [], ys = [], texts = [];
+  for (const e of successEntries) {
+    const parsed = parseVariantId(stripRunSuffix(e.variant_id || ''));
+    const xVal = parsed[xKey];
+    if (xVal === undefined) continue;   // key absent → omit silently
+    xs.push(xVal);
+    ys.push(e.metric);
+    texts.push(e.variant_id);
+  }
+  const xsCoerced = coerceXValues(xs);
+
+  const scatterTrace = {
+    x: xsCoerced,
+    y: ys,
+    text: texts,
+    hovertemplate: '<b>%{text}</b><br>%{yaxis.title.text}: %{y}<extra></extra>',
+    mode: 'markers',
+    type: 'scatter',
+    name: 'runs',
+    marker: { size: 8, color: '#2e86de' },
+    connectgaps: false,
+  };
+
+  // Repeat-group mean markers (D2 / task 6.7)
+  const groups = {};
+  for (let i = 0; i < xs.length; i++) {
+    const base = stripRunSuffix(texts[i]);
+    if (!groups[base]) groups[base] = { xRaw: xs[i], ys: [] };
+    groups[base].ys.push(ys[i]);
+  }
+  const meanXs = [], meanYs = [], meanTexts = [];
+  for (const [base, g] of Object.entries(groups)) {
+    if (g.ys.length < 2) continue;
+    meanXs.push(g.xRaw);
+    meanYs.push(g.ys.reduce((a, b) => a + b, 0) / g.ys.length);
+    meanTexts.push(`mean(${base})`);
+  }
+  const meanCoerced = coerceXValues(meanXs);
+
+  const meanTrace = {
+    x: meanCoerced,
+    y: meanYs,
+    text: meanTexts,
+    hovertemplate: '<b>%{text}</b><br>mean: %{y}<extra></extra>',
+    mode: 'markers',
+    type: 'scatter',
+    name: 'mean',
+    marker: { size: 14, symbol: 'diamond', color: '#e84393', line: { width: 2, color: '#fff' } },
+  };
+
+  const primaryMetric = allEntries.find(e => e.primary_metric)?.primary_metric || 'metric';
+  const layout = {
+    xaxis: { title: xKey },
+    yaxis: { title: primaryMetric },
+    margin: { t: 30, r: 20, b: 50, l: 60 },
+    legend: { orientation: 'h', y: -0.15 },
+    plot_bgcolor: '#fff',
+    paper_bgcolor: '#fff',
+  };
+
+  Plotly.react(chartDiv, [scatterTrace, meanTrace], layout, { responsive: true });
+}
+
+// ─── Failure inspector ───────────────────────────────────────────────────────
+
+function renderFailures(entries) {
+  const panel = document.getElementById('failures-panel');
+  const failures = entries.filter(e => e.status === 'FAILURE');
+  if (failures.length === 0) {
+    panel.innerHTML = '<p>No failures.</p>';
+    return;
+  }
+  panel.innerHTML = failures.map((e, i) => {
+    const err = e.error || '(no error message recorded)';
+    const dir = e.output_dir || '—';
+    return `<div class="failure-block" id="failure-${i}">
+      <div class="failure-id">${escHtml(e.variant_id || '—')}</div>
+      <div class="failure-err">${escHtml(err)}</div>
+      <div class="failure-dir">${escHtml(dir)}</div>
+    </div>`;
+  }).join('');
+}
+
+function highlightFailure(rowIdx) {
+  // Map the leaderboard row index to the failure-panel block
+  const failures = allEntries
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.status === 'FAILURE');
+  const pos = failures.findIndex(({ i }) => i === rowIdx);
+  if (pos < 0) return;
+  document.querySelectorAll('.failure-block').forEach(b => b.classList.remove('highlighted'));
+  const block = document.getElementById(`failure-${pos}`);
+  if (block) {
+    block.classList.add('highlighted');
+    setTimeout(() => block.classList.remove('highlighted'), 3000);
+  }
+}
+
+// ─── Auto-refresh (poll /api/status every 5 s) ───────────────────────────────
+
+async function pollStatus() {
+  try {
+    const res  = await fetch('/api/status');
+    const data = await res.json();
+    updateBadge(data.running);
+    if (data.mtime !== lastMtime) {
+      lastMtime = data.mtime;
+      await refreshData();
+    }
+  } catch (_) { /* network error — ignore, will retry */ }
+}
+
+function updateBadge(running) {
+  const badge = document.getElementById('badge');
+  if (running) {
+    badge.textContent = '● LIVE';
+    badge.className = 'live';
+  } else {
+    badge.textContent = '● IDLE';
+    badge.className = 'idle';
+  }
+}
+
+// ─── Data loading ─────────────────────────────────────────────────────────────
+
+async function refreshData() {
+  const res     = await fetch('/api/leaderboard');
+  allEntries    = await res.json();
+  renderTable(allEntries);
+  populateAxisDropdown(allEntries);
+  renderChart();
+  renderFailures(allEntries);
+}
+
+async function init() {
+  // Derive task name from URL path (server is started per task dir)
+  try {
+    const cfg = await fetch('/api/config');
+    const data = await cfg.json();
+    const name = data?.name || data?.task?.name || window.location.host;
+    document.getElementById('task-name').textContent = name;
+    document.title = `CORNET — ${name}`;
+  } catch (_) {}
+
+  await refreshData();
+  document.getElementById('x-axis-select').addEventListener('change', renderChart);
+  setInterval(pollStatus, 5000);
+}
+
+init();
+</script>
+</body>
+</html>

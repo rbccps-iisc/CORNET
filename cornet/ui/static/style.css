@@ -1,0 +1,126 @@
+/* CORNET UI — minimal styles */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  background: #f5f6fa;
+  color: #1a1a2e;
+}
+
+header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+
+#badge {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: #3a3a5c;
+}
+#badge.live  { background: #1a7f4b; color: #d6ffe9; }
+#badge.idle  { background: #3a3a5c; color: #aaa; }
+
+main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+
+section { margin-bottom: 2rem; }
+
+h2 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #555;
+  margin-bottom: 0.75rem;
+}
+
+/* ---- Table ---- */
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+
+th {
+  background: #eef0f6;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+td { padding: 0.45rem 0.75rem; border-top: 1px solid #eee; vertical-align: middle; }
+
+tr:hover td { background: #f9f9ff; }
+
+.status-SUCCESS { color: #1a7f4b; font-weight: 600; }
+.status-FAILURE { color: #c0392b; font-weight: 600; }
+.status-RUNNING { color: #d68910; font-weight: 600; }
+
+.badge-fail {
+  cursor: pointer;
+  background: #c0392b;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.4rem;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.badge-fail:hover { background: #96281b; }
+
+/* ---- Plotter controls ---- */
+.plotter-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.plotter-controls label { font-size: 0.875rem; font-weight: 600; }
+
+select {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccd;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: #fff;
+}
+
+#chart { width: 100%; height: 420px; }
+
+/* ---- Failures ---- */
+#failures-panel .failure-block {
+  background: #fff;
+  border-left: 4px solid #c0392b;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+
+#failures-panel .failure-block.highlighted {
+  outline: 2px solid #c0392b;
+}
+
+#failures-panel .failure-id { font-weight: 700; margin-bottom: 0.25rem; }
+#failures-panel .failure-err { color: #c0392b; margin-bottom: 0.2rem; font-family: monospace; word-break: break-all; }
+#failures-panel .failure-dir { color: #555; font-family: monospace; font-size: 0.8rem; }

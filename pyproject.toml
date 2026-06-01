@@ -20,6 +20,10 @@ dev = [
     "pytest>=7.0",
     "pytest-cov",
 ]
+ui = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
 ros2 = [
 ]
 ros1 = [
