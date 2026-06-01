@@ -36,3 +36,9 @@ Repository = "https://github.com/rbccps-iisc/CORNET"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["cornet*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires a real NS-3 + CTTC installation (deselected by default)",
+]
+addopts = "-m 'not integration'"
