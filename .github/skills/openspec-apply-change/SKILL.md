@@ -15,6 +15,12 @@ Implement tasks from an OpenSpec change.
 
 **Steps**
 
+0. **Load discuss constraints (if present)**
+
+   Before reading task context, check whether `openspec/changes/<name>/discussion.md` exists.
+   - If it **exists**: read it and locate the `## Decisions Made` section. Treat every decision listed there as a **binding implementation constraint** for this apply run — honor them throughout all tasks.
+   - If it does **not exist**: proceed normally. No warning or error is needed; the discuss phase is optional.
+
 1. **Select the change**
 
    If a name is provided, use it. Otherwise:

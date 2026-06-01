@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from cornet.config.loader import load_unified
 from cornet.gazebo.generic_launch import generate
+from cornet.orchestrator import Orchestrator
 
 
 def test_generate_launch_with_two_robots(tmp_path: Path) -> None:
@@ -45,3 +47,21 @@ experiment:
     compile(source, str(launch_path), "exec")
     assert "robot_a" in source
     assert "robot_b" in source
+
+
+def test_cleanup_removes_stale_launch_file_and_keeps_recent(tmp_path: Path) -> None:
+    """Files older than 1 hour are removed; recently created files are kept."""
+    old_file = tmp_path / "generated_launch_old.py"
+    new_file = tmp_path / "generated_launch_new.py"
+    old_file.write_text("# old")
+    new_file.write_text("# new")
+
+    # Back-date old_file by 2 hours
+    two_hours_ago = time.time() - 7200
+    import os
+    os.utime(old_file, (two_hours_ago, two_hours_ago))
+
+    Orchestrator()._cleanup_stale_launch_files(tmp_path)
+
+    assert not old_file.exists(), "stale file should have been removed"
+    assert new_file.exists(), "recent file must not be removed"

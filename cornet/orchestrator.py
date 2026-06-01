@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import sys
 import time
@@ -53,12 +54,14 @@ class Orchestrator:
     ) -> None:
         """Run an experiment from a task directory or explicit config path."""
         config, resolved_task_dir = self._resolve_config(task_dir, config_path)
+        self._cleanup_stale_launch_files(resolved_task_dir)
 
         # Sweep expansion
         from cornet.sweep.expander import expand_sweep
         variants = expand_sweep(config)
 
         previous_ros_domain = os.environ.get("ROS_DOMAIN_ID")
+        previous_gazebo_uri = os.environ.get("GAZEBO_MASTER_URI")
         try:
             for variant_index, variant_cfg in enumerate(variants):
                 self._apply_ros_domain(variant_cfg, variant_index)
@@ -68,6 +71,10 @@ class Orchestrator:
                 os.environ.pop("ROS_DOMAIN_ID", None)
             else:
                 os.environ["ROS_DOMAIN_ID"] = previous_ros_domain
+            if previous_gazebo_uri is None:
+                os.environ.pop("GAZEBO_MASTER_URI", None)
+            else:
+                os.environ["GAZEBO_MASTER_URI"] = previous_gazebo_uri
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
@@ -136,7 +143,29 @@ class Orchestrator:
             except Exception:
                 logger.exception("Error collecting from plugin %s", type(p).__name__)
 
-        self._eval_and_record(config, task_dir, output_dir)
+        try:
+            self._eval_and_record(config, task_dir, output_dir)
+        except ValueError as exc:
+            logger.error(
+                "EvalTool metric error for variant '%s': %s",
+                config.experiment.name,
+                exc,
+            )
+            if task_dir is not None:
+                import datetime
+                from cornet.leaderboard.writer import append_entry
+                append_entry(
+                    task_dir=str(task_dir),
+                    entry={
+                        "timestamp": datetime.datetime.utcnow().isoformat(),
+                        "variant_id": config.experiment.name,
+                        "status": "FAILURE",
+                        "metric": None,
+                        "output_dir": str(output_dir),
+                        "primary_metric": config.experiment.primary_metric,
+                        "error": str(exc),
+                    },
+                )
 
     def _apply_ros_domain(self, config: UnifiedConfig, variant_index: int) -> None:
         """Assign per-variant ROS_DOMAIN_ID when sweep.parallel is enabled."""
@@ -158,6 +187,15 @@ class Orchestrator:
             domain_id,
             config.experiment.name,
         )
+
+        if config.robot is not None:
+            gazebo_port = 11345 + variant_index
+            os.environ["GAZEBO_MASTER_URI"] = f"http://localhost:{gazebo_port}"
+            logger.info(
+                "Assigned GAZEBO_MASTER_URI=http://localhost:%s for variant '%s'",
+                gazebo_port,
+                config.experiment.name,
+            )
 
     def _auto_discover(self, config: UnifiedConfig, task_dir: Path) -> None:
         """Set robot.launch_file and robot.world from task_dir if not explicitly provided."""
@@ -241,7 +279,15 @@ class Orchestrator:
         try:
             metric = float(metric_str)
         except ValueError:
-            metric = None
+            raise ValueError(
+                f"EvalTool returned non-float metric: {metric_str!r}. "
+                "Use EvalTool.format_result() to construct the return string."
+            )
+        if not math.isfinite(metric):
+            raise ValueError(
+                f"EvalTool returned non-finite metric: {metric_str!r} (got {metric}). "
+                "Use EvalTool.format_result() to construct the return string."
+            )
 
         from cornet.leaderboard.writer import append_entry
         import datetime
@@ -257,3 +303,12 @@ class Orchestrator:
             },
         )
         logger.info("Leaderboard entry written: %s, metric=%s", status, metric)
+
+    def _cleanup_stale_launch_files(self, task_dir: Path) -> None:
+        """Remove generated_launch_*.py files older than 1 hour from task_dir."""
+        now = time.time()
+        for stale_file in task_dir.glob("generated_launch_*.py"):
+            age = now - stale_file.stat().st_mtime
+            if age > 3600:
+                stale_file.unlink()
+                logger.debug("Removed stale launch file: %s (age %.0fs)", stale_file, age)

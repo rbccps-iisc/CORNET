@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from cornet.config.loader import load_unified
@@ -101,3 +102,49 @@ def test_stop_called_when_start_fails(monkeypatch, tmp_path: Path) -> None:
         pass
 
     assert events == ["configure", "configure", "start", "start", "stop"]
+
+
+def _parallel_sweep_config(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+_schema: unified-v1
+network:
+  plugin: ns3
+  type: ns3
+  nodes: []
+robot:
+  plugin: gazebo
+  robots: []
+experiment:
+  name: base
+  duration: 0.0
+  output_dir: tmp/results
+  sweep:
+    axes:
+      network.numerology: [1, 2]
+    parallel: true
+""".strip()
+    )
+    return load_unified(config_path)
+
+
+def test_parallel_sweep_assigns_gazebo_master_uri(monkeypatch, tmp_path: Path) -> None:
+    """Each parallel variant must receive a unique GAZEBO_MASTER_URI port."""
+    orchestrator = Orchestrator()
+    config = _parallel_sweep_config(tmp_path)
+
+    captured: list[str] = []
+
+    def fake_run_variant(variant_cfg, task_dir):
+        captured.append(os.environ.get("GAZEBO_MASTER_URI", ""))
+
+    monkeypatch.setattr(orchestrator, "_run_variant", fake_run_variant)
+
+    orchestrator.run(config_path=tmp_path / "config.yaml")
+
+    assert len(captured) == 2
+    assert captured[0] == "http://localhost:11345"
+    assert captured[1] == "http://localhost:11346"
+    # env var must be restored after run
+    assert os.environ.get("GAZEBO_MASTER_URI") != "http://localhost:11346"

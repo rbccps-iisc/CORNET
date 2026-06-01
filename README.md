@@ -28,6 +28,10 @@ python -m cornet view tasks/pendulum_nr_control
 
 See [docs/INSTALL.md](docs/INSTALL.md) for system prerequisites and [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for a walkthrough.
 
+## Development
+
+CORNET changes are tracked with OpenSpec (`/opsx:propose → /opsx:discuss → /opsx:apply → /opsx:archive`). The optional discuss phase (`/opsx:discuss`) runs adversarial critique and generates a `discussion.md` with binding implementation constraints before apply. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#openspec-workflow).
+
 ## CORNET Family
 
 | Version | Repo | Publication |

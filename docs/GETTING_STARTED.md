@@ -65,3 +65,28 @@ python -m cornet view tasks/pendulum_nr_control
 ```
 
 This prints a `rich` table sorted by the configured primary metric.
+
+## 6. Develop with OpenSpec
+
+CORNET uses an OpenSpec workflow for tracking framework changes. The phases are:
+
+```
+/opsx:propose  →  [/opsx:discuss]  →  /opsx:apply  →  /opsx:archive
+```
+
+### Discuss Phase
+
+Run `/opsx:discuss` after proposing a change and before implementing it. It performs an adversarial review of the proposal — raising challenges, generating alternative designs, and recording final decisions — then writes `discussion.md` to the change directory.
+
+```
+/opsx:discuss <change-name>             # full prose output
+/opsx:discuss <change-name> --compressed  # caveman-compressed output
+```
+
+`discussion.md` contains three sections:
+- **Challenge Report** — up to 5 cited adversarial challenges with failure modes and mitigations
+- **Counter-Designs** — 1–3 alternative architectural approaches with a recommendation
+- **Decisions Made** — binding implementation constraints that `/opsx:apply` honors
+
+The discuss phase is optional. `/opsx:apply` proceeds normally without it. Use it when your proposal has real design uncertainty or when you want structured critique before writing code.
+

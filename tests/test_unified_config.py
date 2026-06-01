@@ -118,3 +118,29 @@ def test_invalid_scenario_profile_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigValidationError, match="scenario.profile must be one of"):
         load_unified(write_yaml(tmp_path, content))
+
+
+def test_missing_schema_tag_with_sentinel_key_gives_hint(tmp_path: Path) -> None:
+    """A YAML with robot: but no _schema tag should hint to add unified-v1."""
+    missing_tag = textwrap.dedent("""
+        robot:
+          plugin: gazebo
+          robots: []
+        experiment:
+          name: test
+          duration: 1.0
+          output_dir: results/test
+        network:
+          plugin: ns3
+          type: ns3
+          nodes: []
+    """).strip()
+    with pytest.raises(ConfigValidationError, match="Did you forget"):
+        load_unified(write_yaml(tmp_path, missing_tag))
+
+
+def test_wrong_schema_version_gives_version_mismatch_message(tmp_path: Path) -> None:
+    """A YAML with _schema: unified-v2 should warn about version mismatch, not missing tag."""
+    wrong_version = VALID_YAML.replace("_schema: unified-v1", "_schema: unified-v2")
+    with pytest.raises(ConfigValidationError, match="Unsupported schema version"):
+        load_unified(write_yaml(tmp_path, wrong_version))

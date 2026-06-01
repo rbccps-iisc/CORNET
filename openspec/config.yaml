@@ -1,5 +1,17 @@
 schema: spec-driven
 
+# Discuss phase convention
+# The /opsx:discuss skill produces an optional discussion.md inside each change
+# directory. It is NOT a schema-tracked artifact (does not appear in applyRequires)
+# but the apply skill reads it when present.
+#
+# discussion.md structure (three required sections):
+#   ## Challenge Report   — up to 5 cited adversarial challenges
+#   ## Counter-Designs    — 1-3 alternative designs with recommendation
+#   ## Decisions Made     — binding implementation constraints for /opsx:apply
+#
+# Add --compressed to /opsx:discuss to produce caveman-mode compressed output.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.

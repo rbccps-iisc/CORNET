@@ -33,6 +33,18 @@ def load_unified(path: str | Path) -> UnifiedConfig:
 
     schema_tag = raw.get("_schema", "")
     if schema_tag != "unified-v1":
+        _sentinel_keys = {"robot", "experiment", "sweep"}
+        _has_sentinel = any(k in raw for k in _sentinel_keys)
+        if not schema_tag and _has_sentinel:
+            raise ConfigValidationError(
+                "Expected '_schema: unified-v1' at the top of this config. "
+                "Did you forget to add '_schema: unified-v1'?"
+            )
+        if schema_tag and schema_tag != "unified-v1":
+            raise ConfigValidationError(
+                f"Unsupported schema version '{schema_tag}'. "
+                "This framework requires '_schema: unified-v1'."
+            )
         raise ConfigValidationError(
             f"Expected '_schema: unified-v1', got '{schema_tag}'. "
             "This loader only handles unified configs."
