@@ -1,36 +1,57 @@
 #!/usr/bin/env bash
-# install_ns3.sh — Clone, build, and patch NS-3 3.38 + NR v2.4 for CORNET.
+# install_ns3.sh — Clone, build, and patch NS-3 + NR for CORNET.
 #
-# Idempotency:
-#   Both sentinel files must be present to skip:
-#     $NS3_DIR/.cornet-built          (written after successful NS-3 build)
-#     $NS3_DIR/contrib/nr/.cornet-patched-v2.4  (written after patch application)
+# Idempotency (both sentinels must be present to skip):
+#   $NS3_DIR/.cornet-built                               (written after NS-3 build)
+#   $NS3_DIR/contrib/nr/.cornet-patched-<patch-set-ver>  (written after patching)
 #
 # D1: Sentinels are written LAST — a partial failure leaves one absent.
-# D4: Detects existing NR version and exits 1 on mismatch with target v2.4.
+# D4: Detects existing NR version and exits 1 on mismatch with target version.
 #
 # Environment variables:
+#   PATCH_SET — patch set to use (default: v2.4-ns3.38)
+#               Supported: v2.4-ns3.38, v4.2-ns3.47
 #   NS3_DIR   — where to clone/find NS-3 (default: ~/ns-3-dev)
-#   NR_TAG    — NR git tag to checkout (default: v2.4)
-#   NS3_TAG   — NS-3 git tag to checkout (default: ns-3.38)
 set -euo pipefail
 
+PATCH_SET="${PATCH_SET:-v2.4-ns3.38}"
+
+# ── Version lookup table ────────────────────────────────────────────────────
+case "$PATCH_SET" in
+    v2.4-ns3.38)
+        NS3_TAG="ns-3.38"
+        NR_TAG="v2.4"
+        TARGET_NR_VER="2.4"
+        SENTINEL_SUFFIX="v2.4"
+        ;;
+    v4.2-ns3.47)
+        NS3_TAG="ns-3.47"
+        NR_TAG="v4.2"
+        TARGET_NR_VER="4.2"
+        SENTINEL_SUFFIX="v4.2"
+        ;;
+    *)
+        echo "ERROR: Unknown PATCH_SET='$PATCH_SET'." >&2
+        echo "       Supported values: v2.4-ns3.38, v4.2-ns3.47" >&2
+        exit 1
+        ;;
+esac
+
 NS3_DIR="${NS3_DIR:-$HOME/ns-3-dev}"
-NR_TAG="${NR_TAG:-v2.4}"
-NS3_TAG="${NS3_TAG:-ns-3.38}"
-TARGET_NR_VER="2.4"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PATCHES_DIR="$REPO_ROOT/scripts/patches/ns3/v2.4-ns3.38"
+PATCHES_DIR="$REPO_ROOT/scripts/patches/ns3/$PATCH_SET"
+SCRATCH_SRC="$REPO_ROOT/scripts/ns3/scratch/$PATCH_SET"
 
 SENTINEL_BUILD="$NS3_DIR/.cornet-built"
-SENTINEL_PATCHED="$NS3_DIR/contrib/nr/.cornet-patched-v2.4"
+SENTINEL_PATCHED="$NS3_DIR/contrib/nr/.cornet-patched-$SENTINEL_SUFFIX"
 
 echo "==> CORNET NS-3 Installer"
-echo "    NS3_DIR : $NS3_DIR"
-echo "    NS3_TAG : $NS3_TAG"
-echo "    NR_TAG  : $NR_TAG"
+echo "    PATCH_SET : $PATCH_SET"
+echo "    NS3_DIR   : $NS3_DIR"
+echo "    NS3_TAG   : $NS3_TAG"
+echo "    NR_TAG    : $NR_TAG"
 echo ""
 
 # ── Idempotency gate ────────────────────────────────────────────────────────
@@ -55,19 +76,17 @@ if [[ -d "$NR_DIR" ]]; then
     if [[ -n "$EXISTING_VER" ]] && [[ "$EXISTING_VER" != "$TARGET_NR_VER" ]]; then
         echo "ERROR: Existing NR installation detected at $NR_DIR" >&2
         echo "       Found version: v$EXISTING_VER" >&2
-        echo "       Expected:      v$TARGET_NR_VER" >&2
+        echo "       Expected:      v$TARGET_NR_VER (for PATCH_SET=$PATCH_SET)" >&2
         echo "" >&2
-        echo "  This installer targets NR v$TARGET_NR_VER (the version CORNET patches" >&2
-        echo "  were validated against). Your installation has NR v$EXISTING_VER." >&2
-        echo "" >&2
-        echo "  If you previously installed NR v2.6 following an older version of" >&2
-        echo "  docs/INSTALL.md, you need to remove the existing NR checkout first:" >&2
+        echo "  This installer targets NR v$TARGET_NR_VER. Your NS3_DIR has NR v$EXISTING_VER." >&2
+        echo "  Remove the existing NR checkout and re-run:" >&2
         echo "" >&2
         echo "    rm -rf $NR_DIR" >&2
         echo "    # Then re-run this script" >&2
         echo "" >&2
-        echo "  For migration to NR v4.2 (NS-3 3.47), see:" >&2
-        echo "    scripts/patches/ns3/v4.2-ns3.47/MIGRATION_STATUS.md" >&2
+        echo "  To install a different version, use a separate NS3_DIR:" >&2
+        echo "    NS3_DIR=~/ns-3-dev-v47 PATCH_SET=v4.2-ns3.47 bash $0" >&2
+        echo "  Or use: make install-ns3-v47" >&2
         exit 1
     fi
 fi
@@ -84,7 +103,7 @@ if [[ -d "$NS3_DIR" ]] && [[ -f "$SENTINEL_BUILD" ]]; then
     echo "==> Running compatibility pre-flight check..."
     python3 "$REPO_ROOT/scripts/check_ns3_compat.py" \
         --ns3-dir "$NS3_DIR" \
-        --patch-set "v2.4-ns3.38" || {
+        --patch-set "$PATCH_SET" || {
         echo "ERROR: Pre-flight check failed. Review report above." >&2
         exit 1
     }
@@ -134,12 +153,28 @@ git apply "$PATCHES_DIR/nr_schedulers.patch"
 touch "$SENTINEL_PATCHED"
 echo "    Patch sentinel written: $SENTINEL_PATCHED"
 
+# ── Copy scratch scripts to NS-3 build tree ─────────────────────────────────
+if [[ -d "$SCRATCH_SRC" ]]; then
+    CC_COUNT=$(find "$SCRATCH_SRC" -maxdepth 1 -name '*.cc' | wc -l)
+    if [[ "$CC_COUNT" -gt 0 ]]; then
+        echo "==> Copying $CC_COUNT scratch script(s) from $SCRATCH_SRC to $NS3_DIR/scratch/..."
+        cp "$SCRATCH_SRC"/*.cc "$NS3_DIR/scratch/"
+        echo "    Copied: $(find "$SCRATCH_SRC" -maxdepth 1 -name '*.cc' -exec basename {} \; | tr '\n' ' ')"
+    else
+        echo "    WARNING: $SCRATCH_SRC exists but contains no .cc files (skipping scratch copy)"
+    fi
+else
+    echo "    WARNING: No scratch scripts directory at $SCRATCH_SRC (skipping scratch copy)"
+fi
+
 # ── Rebuild with patches applied ────────────────────────────────────────────
 echo "==> Rebuilding NS-3 with CORNET patches..."
 cd "$NS3_DIR"
 ./ns3 build
 
 echo ""
-echo "==> NS-3 3.38 + NR v2.4 installed and patched successfully."
+echo "==> NS-3 ($NS3_TAG) + NR ($NR_TAG) installed and patched successfully."
+echo "    PATCH_SET : $PATCH_SET"
+echo "    NS3_DIR   : $NS3_DIR"
 echo "    Set NS3_DIR=$NS3_DIR in your environment (or ~/.bashrc)."
 echo "    Verify: python -m cornet --help"

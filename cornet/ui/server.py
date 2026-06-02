@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
@@ -42,11 +42,23 @@ def create_app(task_dir: Path) -> FastAPI:
     # ------------------------------------------------------------------
 
     @app.get("/api/leaderboard")
-    def get_leaderboard() -> JSONResponse:
-        """Return all leaderboard entries, or [] if the file does not exist."""
+    def get_leaderboard(variant: str = Query(default="all")) -> JSONResponse:
+        """Return leaderboard entries, optionally filtered by NS-3 version tag.
+
+        ``?variant=all`` (default) returns all entries.
+        ``?variant=ns3-v24`` returns only entries whose ``variant_id`` carries
+        the tag ``ns3-v24`` after the ``@`` separator (exact match).
+        Entries without an ``@`` are only visible under ``variant=all``.
+        """
         if not leaderboard_path.exists():
             return JSONResponse([])
         entries = json.loads(leaderboard_path.read_text(encoding="utf-8"))
+        if variant != "all":
+            entries = [
+                e for e in entries
+                if "@" in e.get("variant_id", "")
+                and e["variant_id"].split("@", 1)[1] == variant
+            ]
         return JSONResponse(entries)
 
     @app.get("/api/config")

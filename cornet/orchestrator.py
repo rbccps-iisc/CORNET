@@ -101,6 +101,13 @@ class Orchestrator:
 
     def _run_variant(self, config: UnifiedConfig, task_dir: Path | None) -> None:
         """Run a single variant through the full lifecycle."""
+        # Inject NS-3 version tag into variant_id before ExperimentContext is built
+        # so that every downstream consumer (context, leaderboard, logs) sees the tag.
+        # Controlled by CORNET_NS3_TAG env var (e.g. "ns3-v24"). No-op when unset.
+        ns3_tag = os.environ.get("CORNET_NS3_TAG")
+        if ns3_tag:
+            config.experiment.name = f"{config.experiment.name}@{ns3_tag}"
+
         context = ExperimentContext(variant_id=config.experiment.name)
         output_dir = Path(config.experiment.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

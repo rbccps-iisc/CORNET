@@ -17,8 +17,10 @@
 <main>
   <!-- ── Leaderboard table ─────────────────────────────────── -->
   <section id="section-table">
-    <h2>Runs</h2>
-    <div class="table-wrap">
+    <h2>Runs</h2>    <div class="plotter-controls">
+      <label for="variant-filter">NS-3 version:</label>
+      <select id="variant-filter"><option value="all">All versions</option></select>
+    </div>    <div class="table-wrap">
       <table id="lb-table">
         <thead>
           <tr>
@@ -316,11 +318,54 @@ function updateBadge(running) {
   }
 }
 
-// ─── Data loading ─────────────────────────────────────────────────────────────
+// ─── Variant filter ────────────────────────────────────────────────────
+
+/**
+ * Extract unique NS-3 version tags from entries that carry an "@" separator.
+ * Entries without "@" are excluded from the options list — they appear only
+ * under "All versions" (Discussion D4).
+ */
+function buildVariantTags(entries) {
+  const tags = new Set();
+  for (const e of entries) {
+    const vid = e.variant_id || '';
+    if (vid.includes('@')) {
+      tags.add(vid.split('@', 2)[1]);
+    }
+  }
+  return [...tags].sort();
+}
+
+/**
+ * Populate the variant filter <select> from the current entries.
+ * Preserves the current selection when the tag still exists; falls back to "all".
+ */
+function populateVariantFilter(entries) {
+  const sel = document.getElementById('variant-filter');
+  const current = sel.value;
+  const tags = buildVariantTags(entries);
+  sel.innerHTML = '<option value="all">All versions</option>' +
+    tags.map(t => `<option value="${escHtml(t)}"${t === current ? ' selected' : ''}>${escHtml(t)}</option>`).join('');
+  if (tags.includes(current)) sel.value = current;
+}
+
+function selectedVariant() {
+  return document.getElementById('variant-filter').value;
+}
+
+// ─── Data loading ──────────────────────────────────────────────────────
 
 async function refreshData() {
-  const res     = await fetch('/api/leaderboard');
-  allEntries    = await res.json();
+  // Fetch all entries to populate the variant dropdown options, then fetch
+  // filtered entries for the table/chart if a specific variant is selected.
+  const allRes   = await fetch('/api/leaderboard');
+  const allData  = await allRes.json();
+  populateVariantFilter(allData);
+
+  const v = selectedVariant();
+  const url = v === 'all' ? '/api/leaderboard' : `/api/leaderboard?variant=${encodeURIComponent(v)}`;
+  const res = await fetch(url);
+  allEntries = await res.json();
   renderTable(allEntries);
   populateAxisDropdown(allEntries);
   renderChart();
@@ -339,6 +384,7 @@ async function init() {
 
   await refreshData();
   document.getElementById('x-axis-select').addEventListener('change', renderChart);
+  document.getElementById('variant-filter').addEventListener('change', refreshData);
   setInterval(pollStatus, 5000);
 }
 
