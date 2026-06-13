@@ -60,6 +60,8 @@ class MiddlewareConfig(BaseModel):
     clock_timeout_s: float = Field(default=5.0, description="Seconds after which the physics clock falls back to wall clock if no NS-3 clock tick is received.")
     clock_socket: str = Field(default="/tmp/cornet_clock.sock", description="UNIX socket path for the physics clock synchronisation channel.")
     positions_socket: str = Field(default="/tmp/cornet_positions.sock", description="UNIX socket path for the PositionBroadcaster live position feed.")
+    sensor_port: int = Field(default=5001, description="UDP port for robot sensor data flow (forwarded to NS-3 scratch script as --sensorPort). Default 5001.")
+    control_port: int = Field(default=5002, description="UDP port for robot control command flow (forwarded to NS-3 scratch script as --controlPort). Default 5002.")
 
 
 class MobilityConfig(BaseModel):
@@ -107,6 +109,15 @@ class NetworkConfig(BaseModel):
     middleware: MiddlewareConfig | None = Field(default=None, description="Co-simulation middleware settings (TUN bridge, packet dispatcher, AoI tracker).")
     mobility: MobilityConfig | None = Field(default=None, description="Live position update settings (PositionBroadcaster from Gazebo to NS-3).")
     scenario: ScenarioConfig | None = Field(default=None, description="5G/6G NS-3 scenario profile. Required when type includes 'ns3'.")
+    requires_nr_capability: list[str] | str | None = Field(
+        default=None,
+        description=(
+            "Optional: one or more capability names from scripts/patches/ns3/CAPABILITY_MATRIX.yaml "
+            "that this task requires. The orchestrator will check the installed NS-3 lane and exit "
+            "with a clear error if the capability is not available at the required level. "
+            "Example: 'custom_edf_scheduler' or ['custom_edf_scheduler', 'pdcp_aoi_timestamps']."
+        ),
+    )
     # NS-3 specific keys forwarded as-is
     model_config = ConfigDict(extra="allow")
 

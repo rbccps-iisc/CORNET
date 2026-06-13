@@ -9,6 +9,7 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+openspec/
 tasks/*/generated_launch_*.py
 tasks/*/leaderboard.json.bak.*
 tasks/*/results/

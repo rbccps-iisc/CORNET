@@ -122,6 +122,7 @@ class Orchestrator:
         plugins = self._load_plugins(config)
 
         started: list[Plugin] = []
+        lifecycle_error: Exception | None = None
         try:
             for p in plugins:
                 p.configure(config, context)
@@ -132,9 +133,9 @@ class Orchestrator:
             logger.info("Running experiment '%s' for %.1f s …", config.experiment.name, config.experiment.duration)
             self._run_plugins(plugins, config.experiment.duration)
 
-        except Exception:
+        except Exception as exc:
             logger.exception("Error during experiment run")
-            raise
+            lifecycle_error = exc
         finally:
             # Stop in reverse order
             for p in reversed(started):
@@ -142,6 +143,26 @@ class Orchestrator:
                     p.stop()
                 except Exception:
                     logger.exception("Error stopping plugin %s", type(p).__name__)
+
+        if lifecycle_error is not None:
+            # Write a FAILURE leaderboard entry so the run is always traceable,
+            # then re-raise so the caller (and make) sees a non-zero exit.
+            if task_dir is not None:
+                import datetime
+                from cornet.leaderboard.writer import append_entry
+                append_entry(
+                    task_dir=str(task_dir),
+                    entry={
+                        "timestamp": datetime.datetime.utcnow().isoformat(),
+                        "variant_id": config.experiment.name,
+                        "status": "FAILURE",
+                        "metric": None,
+                        "output_dir": str(output_dir),
+                        "primary_metric": config.experiment.primary_metric,
+                        "error": str(lifecycle_error),
+                    },
+                )
+            raise lifecycle_error
 
         # Collect phase (after stop, no rollback on error)
         for p in plugins:

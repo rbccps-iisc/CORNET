@@ -3,21 +3,30 @@
 This directory contains patches that extend NS-3 and the 5G-LENA NR module with
 CORNET-specific schedulers and PDCP instrumentation.
 
+> **Capability registry**: `CAPABILITY_MATRIX.yaml` in this directory is the
+> authoritative source of what each patch provides, at what validation level,
+> and which experiment domains it applies to. Consult it before deciding which
+> patches to apply for a given experiment.
+
 ## Compatibility Matrix
 
 | Patch set directory  | NS-3 version | NR version | Status        |
 |----------------------|--------------|------------|---------------|
 | `v2.4-ns3.38/`       | 3.38         | v2.4       | ✅ Validated  |
-| `v4.2-ns3.47/`       | 3.47         | v4.2       | ⏳ Pending migration |
+| `v4.2-ns3.47/`       | 3.47         | v4.2       | ⏳ Patches rebased — awaiting runtime validation (`make validate-v47`) |
 
 ## v2.4-ns3.38 — Patch Descriptions
 
 ### `ns3_lte_pdcp.patch`
-Applies to the **NS-3 source directory** (`$NS3_DIR`).
+**Type**: `infrastructure` | Applies to the **NS-3 source directory** (`$NS3_DIR`).
 
 Instruments `LtePdcp` to expose per-PDU timestamps for Age-of-Information (AoI)
 measurement. Also threads a CORNET callback into `LteHelper` and `LteNetDevice`
 for co-simulation handoff.
+
+**Scope**: Useful for ANY CORNET experiment that measures packet age — not limited
+to AoI/EDF scheduler experiments. Also enables the TUN/TAP virtual-port
+contract (`cornet_tap_bridge_contract`).
 
 | File modified | Change |
 |---|---|
@@ -43,17 +52,23 @@ diff from the original developer machine — not a NR module file.
 Kept in `originals/` for provenance / archaeology.
 
 ### `nr_schedulers.patch` ← **USE THIS ONE**
+**Type**: `research-feature` | **Domain**: AoI-measurement, deadline-scheduling |
 Applies to the **NR contrib directory** (`$NS3_DIR/contrib/nr`).
 
 Combined, conflict-free patch that registers both the EDF and AoI schedulers.
 Generated from the fully-patched CORNET3.0 NR v2.4 working tree.
+
+> **Domain scoping**: This patch is relevant to AoI-measurement and deadline-
+> scheduling experiments. For CSI-RS, MIMO, beamforming, or fronthaul
+> experiments, this code is **inert** — it will be compiled in but has no effect
+> unless `schedulerType=edf` or `schedulerType=aoi` is explicitly set.
 
 **Verified conflict**: Both individual NR patches modify `CMakeLists.txt` from
 the same NR v2.4 baseline (`index b6976e30`). Applying EDF first causes AoI's
 `CMakeLists.txt` hunk to fail (context mismatch). `nr_schedulers.patch`
 resolves this by applying both sets of changes in a single atomic hunk.
 
-| File modified/added | Patch | Change |
+| File modified/added | Patch type | Change |
 |---|---|---|
 | `CMakeLists.txt` | combined | Registers EDF + AoI `.cc`/`.h` files in build |
 | `model/nr-mac-scheduler-lcg.h` | EDF | EDF LCG scheduler extension |

@@ -9,8 +9,9 @@
 # D4: Detects existing NR version and exits 1 on mismatch with target version.
 #
 # Environment variables:
-#   PATCH_SET — patch set to use (default: v2.4-ns3.38)
+#   PATCH_SET — patch set to use (default: v2.4-ns3.38 — stable lane)
 #               Supported: v2.4-ns3.38, v4.2-ns3.47
+#               Use PATCH_SET=v4.2-ns3.47 or 'make install-ns3-v47' for latest.
 #   NS3_DIR   — where to clone/find NS-3 (default: ~/ns-3-dev)
 set -euo pipefail
 
@@ -178,3 +179,17 @@ echo "    PATCH_SET : $PATCH_SET"
 echo "    NS3_DIR   : $NS3_DIR"
 echo "    Set NS3_DIR=$NS3_DIR in your environment (or ~/.bashrc)."
 echo "    Verify: python -m cornet --help"
+
+# ── Set setuid on tap-creator (needed for non-root TAP bridge creation) ──────
+TAP_CREATOR=$(find "$NS3_DIR/build/src/tap-bridge" -name "ns3.*-tap-creator-default" 2>/dev/null | head -1)
+if [[ -n "$TAP_CREATOR" ]]; then
+    echo ""
+    echo "==> Setting setuid on tap-creator (required for non-root TAP bridge creation)..."
+    sudo chown root "$TAP_CREATOR"
+    sudo chmod u+s  "$TAP_CREATOR"
+    echo "    $TAP_CREATOR: $(ls -la "$TAP_CREATOR" | awk '{print $1,$3}')"
+else
+    echo ""
+    echo "    WARNING: tap-creator binary not found under $NS3_DIR/build/src/tap-bridge"
+    echo "             TAP bridge creation will require running as root."
+fi

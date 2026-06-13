@@ -2,11 +2,11 @@ _schema: unified-v1
 network:
   plugin: ns3
   type: ns3
-  simulation_script: remote_robot_control-default
-  profile: 5g_nr_urllc
-  numerology: 3
-  bandwidth: 100e6
-  scheduler: urllc
+  simulation_script: remote_robot_control-default   # NS-3 scratch script (exact-match: remote_robot_control-default.cc)
+  networkPreset: 5g_nr_urllc                # --networkPreset CLI arg
+  numerology: 3                              # --numerology CLI arg
+  bandwidth: 100000000                       # --bandwidth in Hz (100 MHz)
+  schedulerType: edf                         # --schedulerType: edf for URLLC
   nodes:
     - name: pendulum_robot
       type: UE

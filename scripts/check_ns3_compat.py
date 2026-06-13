@@ -31,7 +31,7 @@ from typing import Literal
 # ---------------------------------------------------------------------------
 VERSION_MATRIX: dict[str, str] = {
     "3.38": "2.4",   # proven — CORNET patches validated here
-    "3.47": "4.2",   # latest — migration pending
+    "3.47": "4.2",   # latest — rebased patch set
 }
 
 # Anchored symbols that MUST exist before CORNET patches can apply cleanly

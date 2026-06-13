@@ -1,10 +1,10 @@
 /*
  * Origin: CORNET3.0@202eb78 network/ns-3/scratch/remote_robot_control.cc
- * Patch-set: v2.4-ns3.38 (NS-3 3.38 + NR v2.4)
- * Copied: 2026-06-02
+ * Patch-set: v4.2-ns3.47 (NS-3 3.47 + NR v4.2)
+ * Rebased: 2026-06-13
  *
  * To check for upstream drift:
- *   diff scripts/ns3/scratch/v2.4-ns3.38/remote_robot_control-default.cc \
+ *   diff scripts/ns3/scratch/v4.2-ns3.47/remote_robot_control-default.cc \
  *        <CORNET3_DIR>/network/ns-3/scratch/remote_robot_control.cc
  *
  * Naming: <task-script-base>-<profile-suffix>.cc
@@ -13,6 +13,7 @@
  *
  * Remote Robot Control Scenario
  * Low-latency control of remote robot over 5G network
+ * Rebased for NS-3 3.47 and NR v4.2 (511-solutions/ns3-dev-nr)
  */
 
 #include "ns3/core-module.h"
@@ -372,8 +373,8 @@ int main(int argc, char *argv[])
         // ref: https://gitlab.com/ns-3-dev-nr-configuredgrant/ns-3-dev/-/tree/ns-3.36-cg
         //
         // The upstream CG branch adds "CG" and "ConfigurationTime" attributes
-        // to NrUeMac/NrGnbMac/NrUePhy/NrGnbPhy (ns-3.36).  Our NR v2.4
-        // (ns-3.38) does not include that fork.  We emulate CG-like behaviour
+        // to NrUeMac/NrGnbMac/NrUePhy/NrGnbPhy (ns-3.36).  Our NR v4.2
+        // does not include that fork.  We emulate CG-like behaviour
         // with the knobs that *are* available:
         //   1. Fixed UL/DL MCS  → deterministic TB size (no SR/BSR overhead)
         //   2. Minimum processing delays N0=0, N1=0, N2=0
@@ -446,10 +447,12 @@ int main(int argc, char *argv[])
 
         CcBwpCreator ccBwpCreator;
         const uint8_t numCcPerBand = 1;
-        CcBwpCreator::SimpleOperationBandConf bandConf(frequency,
-                                                       bandwidth,
-                                                       numCcPerBand,
-                                                       BandwidthPartInfo::UMa);
+
+        // Rebased for v4.2: SimpleOperationBandConf -> OperationBandConf
+        CcBwpCreator::OperationBandConf bandConf(frequency,
+                                                 bandwidth,
+                                                 numCcPerBand,
+                                                 BandwidthPartInfo::UMa);
         OperationBandInfo band = ccBwpCreator.CreateOperationBandContiguousCc(bandConf);
         nrHelper->InitializeOperationBand(&band);
         allBwps = CcBwpCreator::GetAllBwps({band});
@@ -479,7 +482,9 @@ int main(int argc, char *argv[])
 
         internet.Install(ueNodes);
         ueInterfaces = nrEpcHelper->AssignUeIpv4Address(NetDeviceContainer(ueDevices));
-        nrHelper->AttachToClosestEnb(ueDevices, gnbDevices);
+        
+        // Rebased for v4.2: AttachToClosestEnb -> AttachToClosestGnb
+        nrHelper->AttachToClosestGnb(ueDevices, gnbDevices);
 
         Ipv4StaticRoutingHelper ipv4RoutingHelper;
         for (uint32_t i = 0; i < ueNodes.GetN(); ++i)
@@ -523,7 +528,9 @@ int main(int argc, char *argv[])
                 DynamicCast<NrUeNetDevice>(*it)->UpdateConfig();
             }
             bgUeInterfaces = nrEpcHelper->AssignUeIpv4Address(NetDeviceContainer(bgUeDevices));
-            nrHelper->AttachToClosestEnb(bgUeDevices, gnbDevices);
+            
+            // Rebased for v4.2: AttachToClosestEnb -> AttachToClosestGnb
+            nrHelper->AttachToClosestGnb(bgUeDevices, gnbDevices);
 
             Ipv4StaticRoutingHelper bgRoutingHelper;
             for (uint32_t i = 0; i < bgUeNodes.GetN(); ++i)

@@ -32,6 +32,7 @@ Network simulation backend settings (`network:` section).
 | `middleware` | [MiddlewareConfig](#middlewareconfig) | null | null |  | Co-simulation middleware settings (TUN bridge, packet dispatcher, AoI tracker). |
 | `mobility` | [MobilityConfig](#mobilityconfig) | null | null |  | Live position update settings (PositionBroadcaster from Gazebo to NS-3). |
 | `scenario` | [ScenarioConfig](#scenarioconfig) | null | null |  | 5G/6G NS-3 scenario profile. Required when type includes 'ns3'. |
+| `requires_nr_capability` | list[string] | string | null | null |  | Optional: one or more capability names from scripts/patches/ns3/CAPABILITY_MATRIX.yaml that this task requires. The orchestrator will check the installed NS-3 lane and exit with a clear error if the capability is not available at the required level. Example: 'custom_edf_scheduler' or ['custom_edf_scheduler', 'pdcp_aoi_timestamps']. |
 
 ## NodeConfig
 
@@ -85,6 +86,8 @@ Co-simulation middleware layer settings.
 | `clock_timeout_s` | number | `5.0` |  | Seconds after which the physics clock falls back to wall clock if no NS-3 clock tick is received. |
 | `clock_socket` | string | `"/tmp/cornet_clock.sock"` |  | UNIX socket path for the physics clock synchronisation channel. |
 | `positions_socket` | string | `"/tmp/cornet_positions.sock"` |  | UNIX socket path for the PositionBroadcaster live position feed. |
+| `sensor_port` | integer | `5001` |  | UDP port for robot sensor data flow (forwarded to NS-3 scratch script as --sensorPort). Default 5001. |
+| `control_port` | integer | `5002` |  | UDP port for robot control command flow (forwarded to NS-3 scratch script as --controlPort). Default 5002. |
 
 ## MobilityConfig
 

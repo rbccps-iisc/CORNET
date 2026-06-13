@@ -78,5 +78,13 @@
     "metric": 0.25,
     "output_dir": "/tmp/pytest-of-acharya/pytest-20/test_example_tasks_write_leade0/uav_results",
     "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-06-02T04:52:25.222318",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-23/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
   }
 ]

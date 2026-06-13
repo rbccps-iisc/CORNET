@@ -196,9 +196,14 @@ class Ns3Plugin(Plugin):
             if sc.scheduler is not None:
                 args.append(f"--scheduler={sc.scheduler}")
 
-        # Pass TUN interface names to NS-3
+        # Pass TUN interface names to NS-3 (design D14: plugin owns naming)
         for i, (if_name, ip) in enumerate(tun_map.items()):
             args.append(f"--tun{i}={if_name},{ip}")
+
+        # Pass port numbers from schema fields (design D16)
+        if mw and mw.enabled:
+            args.append(f"--sensorPort={mw.sensor_port}")
+            args.append(f"--controlPort={mw.control_port}")
 
         logger.info("Launching NS-3: %s", " ".join(args))
         try:

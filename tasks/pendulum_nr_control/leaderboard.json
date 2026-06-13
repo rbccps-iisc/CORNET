@@ -78,5 +78,58 @@
     "metric": 12.0,
     "output_dir": "/tmp/pytest-of-acharya/pytest-20/test_example_tasks_write_leade0/pendulum_results",
     "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-02T04:52:25.221852",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-23/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-06-02T12:31:52.881261",
+    "variant_id": "pendulum_nr_control@ns3-v24",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "=== Remote Robot Control Scenario ===\nNumber of UEs: 2 (Robot + Controller)\nNumber of background UEs: 0\nNumber of gNBs: 1\nSimulation time: 60s\nNetwork preset: 5g_nr_urllc\nFrequency: 3.5 GHz\nBandwidth: 100 MHz\nNumerology: 3\nUE Tx Power: 23 dBm\ngNB/eNB Tx Power: 43 dBm\nProfile delay target (metadata): 8 ms\nProfile jitter target (metadata): 0 ms\nProfile loss target (metadata): 0.01%\nRNG run: 1\nConfigured-Grant emulation: OFF\nScheduler override: edf\nUE 0: Robot (sensor sender)\nUE 1: Controller (control sender)\nConfiguring 5G NR radio + EPC packet path\nRobot (UE 0) IP: 7.0.0.2\nController (UE 1) IP: 7.0.0.3\n\u2713 TAP bridge: tap-robot -> UE 0\n\u2713 TAP bridge: tap-controller -> UE 1\nNodes, mobility, TAP bridges, and LTE/NR radio path configured\nWaiting for external UDP traffic via TAP bridges\nExpected flows: robot->controller on port 5001, controller->robot on port 5002\nStarting simulation...\naborted. cond=\"exitStatus != 0\", msg=\"TapBridge::CreateTap(): socket creator exited normally with status 255\", +0.000000000s -1 file=/home/acharya/ns-3-dev-v24/src/tap-bridge/model/tap-bridge.cc, line=568\nNS_FATAL, terminating\nterminate called without an active exception"
+  },
+  {
+    "timestamp": "2026-06-02T12:32:50.326151",
+    "variant_id": "pendulum_nr_control@ns3-v24",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "Traceback (most recent call last):\n  File \"/home/acharya/ns-3-dev-v24/ns3\", line 1629, in <module>\n    main()\n  File \"/home/acharya/ns-3-dev-v24/ns3\", line 1402, in main\n    refuse_run_as_root()\n  File \"/home/acharya/ns-3-dev-v24/ns3\", line 1395, in refuse_run_as_root\n    raise Exception(\"Refusing to run as root. --enable-sudo will request your password when needed\")\nException: Refusing to run as root. --enable-sudo will request your password when needed"
+  },
+  {
+    "timestamp": "2026-06-02T12:33:02.492392",
+    "variant_id": "pendulum_nr_control@ns3-v24",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "Traceback (most recent call last):\n  File \"/home/acharya/ns-3-dev-v24/ns3\", line 1629, in <module>\n    main()\n  File \"/home/acharya/ns-3-dev-v24/ns3\", line 1402, in main\n    refuse_run_as_root()\n  File \"/home/acharya/ns-3-dev-v24/ns3\", line 1395, in refuse_run_as_root\n    raise Exception(\"Refusing to run as root. --enable-sudo will request your password when needed\")\nException: Refusing to run as root. --enable-sudo will request your password when needed"
+  },
+  {
+    "timestamp": "2026-06-02T12:38:46.761463",
+    "variant_id": "pendulum_nr_control@ns3-v24",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "ros2 launch exited early (code 1)"
+  },
+  {
+    "timestamp": "2026-06-02T12:40:51.293942",
+    "variant_id": "pendulum_nr_control@ns3-v24",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "ros2 launch exited early (code 1)"
   }
 ]

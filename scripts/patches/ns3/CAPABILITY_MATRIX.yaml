@@ -1,0 +1,192 @@
+# scripts/patches/ns3/CAPABILITY_MATRIX.yaml
+# schema: capability-matrix-v1
+#
+# PURPOSE
+# -------
+# This file is the authoritative registry of CORNET-exposed NS-3/NR features.
+# It is NOT parsed at install time. It is maintained by CORNET maintainers when
+# a new NR version is validated or a new feature is integrated.
+#
+# CAPABILITY LEVELS
+# -----------------
+# upstream-available : Feature exists in NR upstream; CORNET has no patches/scripts/
+#                      config fields for it yet. Requires manual work to use.
+# cornet-integrated  : CORNET patches, scratch scripts, or config.yaml expose the
+#                      feature. Not yet exercised end-to-end.
+# cornet-validated   : Feature has been exercised end-to-end under make validate-*
+#                      with a real leaderboard entry.
+#
+# PATCH TYPES
+# -----------
+# infrastructure    : Enables CORNET middleware (PDCP timestamps, dispatcher hooks).
+#                     SHALL be rebased when promoting to any new default lane.
+# research-feature  : Adds custom research code (EDF/AoI schedulers).
+#                     Rebased ONLY when there is a documented research reason to move.
+# upstream-feature  : Uses upstream NR functionality; no CORNET patches needed.
+#
+# SUPPORTED_IN
+# ------------
+# Each capability carries a list of patch sets where it is available.
+# A feature is satisfiable if ANY entry matches the installed lane.
+
+capabilities:
+
+  # ─── infrastructure patches (applied to all CORNET installs) ──────────────────
+
+  - name: pdcp_aoi_timestamps
+    type: infrastructure
+    nr_introduced: "2.4"
+    supported_in:
+      - patch_set: v2.4-ns3.38
+        patches: [ns3_lte_pdcp.patch]
+        level: cornet-validated
+      - patch_set: v4.2-ns3.47
+        patches: [ns3_lte_pdcp.patch]
+        level: cornet-integrated   # rebased; not yet end-to-end validated
+    config_fields: []
+    notes: >
+      AoI timestamp instrumentation on LtePdcp. Useful for ANY CORNET experiment
+      measuring packet age — including CSI-RS, MIMO, and fronthaul experiments.
+      Not coupled to EDF/AoI scheduler presence.
+
+  - name: cornet_tap_bridge_contract
+    type: infrastructure
+    nr_introduced: "2.4"
+    supported_in:
+      - patch_set: v2.4-ns3.38
+        patches: [ns3_lte_pdcp.patch]
+        level: cornet-validated
+      - patch_set: v4.2-ns3.47
+        patches: [ns3_lte_pdcp.patch]
+        level: cornet-integrated
+    config_fields:
+      - network.middleware.enabled
+      - network.middleware.ip_list
+      - network.middleware.sensor_port
+      - network.middleware.control_port
+    contract: |
+      Scratch scripts MUST parse --tun{i}=name,ip CLI args (one per ip_list entry).
+      TapBridgeHelper names come from the arg values — NOT hard-coded "tap-robot" etc.
+      TAP bridge count equals --tun{i} arg count, NOT numUes.
+      --sensorPort and --controlPort are forwarded from MiddlewareConfig schema fields.
+      Scripts that ignore --tun{i} args are incompatible with middleware.enabled=true.
+
+  # ─── research-feature patches (domain-scoped) ─────────────────────────────────
+  # Migration policy: rebased ONLY when there is a documented research reason.
+  # These are inert for CSI-RS, MIMO, and fronthaul experiments even when applied.
+
+  - name: custom_edf_scheduler
+    type: research-feature
+    domain: aoi-measurement, deadline-scheduling
+    nr_introduced: "2.4"
+    supported_in:
+      - patch_set: v2.4-ns3.38
+        patches: [nr_schedulers.patch]
+        level: cornet-validated
+      - patch_set: v4.2-ns3.47
+        patches: [nr_schedulers.patch]
+        level: cornet-integrated   # rebased patch present; not yet end-to-end validated
+    config_fields:
+      - network.scenario.scheduler   # set to "ofdma-edf" or "edf"
+    notes: >
+      EDF MAC scheduler. Scoped to AoI and deadline-scheduling experiments.
+      Inert in CSI-RS, MIMO, and fronthaul experiments even when applied.
+      Currently bundled with aoi_mac_scheduler in nr_schedulers.patch (CMakeLists
+      conflict); future plan is independent nr_edf_only.patch.
+
+  - name: aoi_mac_scheduler
+    type: research-feature
+    domain: aoi-measurement
+    nr_introduced: "2.4"
+    supported_in:
+      - patch_set: v2.4-ns3.38
+        patches: [nr_schedulers.patch]
+        level: cornet-validated
+      - patch_set: v4.2-ns3.47
+        patches: [nr_schedulers.patch]
+        level: cornet-integrated
+    config_fields:
+      - network.scenario.scheduler   # set to "ofdma-aoi" or "aoi"
+    notes: >
+      AoI-aware MAC scheduler. Currently coupled with custom_edf_scheduler in
+      nr_schedulers.patch due to CMakeLists.txt conflict; future plan is
+      independent nr_aoi_only.patch. Domain: AoI-measurement experiments only.
+
+  # ─── upstream-only features (no CORNET patches required) ──────────────────────
+
+  - name: xr_traffic_models
+    type: upstream-feature
+    nr_introduced: "2.4"
+    supported_in:
+      - patch_set: v2.4-ns3.38
+        patches: []
+        level: cornet-integrated
+    config_fields: []
+    notes: >
+      NGMN and 3GPP XR (VR/AR/CG) traffic generators. Available in NR v2.4
+      traffic-generators/ directory. Not yet surfaced in CORNET config.yaml or
+      scratch scripts.
+
+  - name: qos_flow_api
+    type: upstream-feature
+    nr_introduced: "4.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: cornet-integrated
+    config_fields: []
+    notes: >
+      NrEpsBearer renamed to NrQosFlow in NR v4.0; NrEpcTft renamed to NrQosRule.
+      Scratch script rebased to use new names. No CORNET patch required.
+
+  - name: subband_csi
+    type: upstream-feature
+    nr_introduced: "4.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      Sub-band CQI reporting introduced in NR v4.0. Not yet integrated into CORNET
+      scratch scripts or config.yaml. No CORNET patches required. Use v4.2 lane.
+      Future: PATCH_PROFILE=infrastructure (no scheduler patches) is appropriate.
+
+  - name: csi_rs_measurements
+    type: upstream-feature
+    nr_introduced: "4.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      CSI-RS signals and CSI-IM interference measurements introduced in NR v4.0.
+      No CORNET patches required. Use v4.2 lane. nr_schedulers.patch is inert
+      for these experiments but will be present (full patch profile default).
+      Future: PATCH_PROFILE=infrastructure will allow opting out of scheduler code.
+
+  - name: kronecker_beamforming
+    type: upstream-feature
+    nr_introduced: "4.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      KroneckerBeamforming and KroneckerQuasiOmniBeamforming introduced in NR v4.0.
+      No CORNET patches required. Not yet surfaced in config.yaml.
+
+  - name: reinforcement_learning_scheduler
+    type: upstream-feature
+    nr_introduced: "4.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      NrMacSchedulerTdmaAi and NrMacSchedulerOfdmaAi (ns3-gym based) introduced
+      in NR v4.0 (GSoC 2024 contribution). No CORNET patches required.
+      Requires ns3-gym module to be installed separately.
