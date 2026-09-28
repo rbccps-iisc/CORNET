@@ -1,0 +1,18 @@
+name: nr
+kind: networks
+version: "1"
+description: 5G NR multi-cell scratch driven by layout.json.
+provides: {}
+requires:
+  root: false
+compatible:
+  robots: [pendulum, turtlebot3, px4_x500]
+  worlds: [open_plain, warehouse_small, warehouse_large]
+license:
+  spdx: project-owned
+  vendored: true
+  provenance: CORNET nr_multicell scratch
+notes: >
+  Aerial selection uses TR 38.901 UE height validity. Above 22.5 m for UMa and UMi,
+  or above 10 m for RMa, the channel is UMa-AV, UMi-AV, or RMa-AV and the run records
+  aerial path loss only. Altitude above 300 m is clamped.

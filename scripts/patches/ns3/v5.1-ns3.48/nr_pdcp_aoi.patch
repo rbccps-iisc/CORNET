@@ -1,0 +1,135 @@
+diff --git a/model/nr-pdcp.cc b/model/nr-pdcp.cc
+index e46a948..aedae6c 100644
+--- a/model/nr-pdcp.cc
++++ b/model/nr-pdcp.cc
+@@ -12,6 +12,7 @@
+ 
+ #include "ns3/log.h"
+ #include "ns3/simulator.h"
++#include "ns3/uinteger.h"
+ 
+ namespace ns3
+ {
+@@ -80,6 +81,16 @@ NrPdcp::GetTypeId()
+     static TypeId tid = TypeId("ns3::NrPdcp")
+                             .SetParent<Object>()
+                             .SetGroupName("Nr")
++                            .AddAttribute("PdcpRepetitions",
++                                          "Number of extra PDCP PDU copies sent (0 = off).",
++                                          UintegerValue(0),
++                                          MakeUintegerAccessor(&NrPdcp::m_numRepetitions),
++                                          MakeUintegerChecker<uint8_t>(0, 4))
++                            .AddAttribute("PdcpRepetitionDelayMs",
++                                          "Delay between successive PDCP PDU copies (ms).",
++                                          UintegerValue(1),
++                                          MakeUintegerAccessor(&NrPdcp::m_repetitionDelayMs),
++                                          MakeUintegerChecker<uint32_t>(0, 100))
+                             .AddTraceSource("TxPDU",
+                                             "PDU transmission notified to the RLC.",
+                                             MakeTraceSourceAccessor(&NrPdcp::m_txPdu),
+@@ -190,6 +201,14 @@ NrPdcp::DoTransmitPdcpSdu(NrPdcpSapProvider::TransmitPdcpSduParameters params)
+ 
+     NS_LOG_INFO("Transmitting PDCP PDU with header: " << pdcpHeader);
+     m_rlcSapProvider->TransmitPdcpPdu(txParams);
++
++    for (uint8_t i = 1; i <= m_numRepetitions; i++)
++    {
++        Simulator::Schedule(MilliSeconds(m_repetitionDelayMs * i),
++                            &NrPdcp::SendRepetition,
++                            this,
++                            p->Copy());
++    }
+ }
+ 
+ void
+@@ -197,17 +216,32 @@ NrPdcp::DoReceivePdu(Ptr<Packet> p)
+ {
+     NS_LOG_FUNCTION(this << m_rnti << (uint32_t)m_lcid << p->GetSize());
+ 
+-    // Receiver timestamp
++    NrPdcpHeader pdcpHeader;
++    p->RemoveHeader(pdcpHeader);
++    NS_LOG_LOGIC("PDCP header: " << pdcpHeader);
++
++    if (m_numRepetitions > 0)
++    {
++        uint16_t sn = pdcpHeader.GetSequenceNumber();
++        if (m_rxDupSns.count(sn) > 0)
++        {
++            NS_LOG_INFO("NR PDCP: dropping duplicate PDU, SN=" << sn);
++            return;
++        }
++        m_rxDupSns.insert(sn);
++        if (m_rxDupSns.size() > 64)
++        {
++            m_rxDupSns.clear();
++        }
++    }
++
++    // Receiver timestamp. NrPdcpTag is the upstream sender timestamp.
+     NrPdcpTag pdcpTag;
+     Time delay;
+     p->FindFirstMatchingByteTag(pdcpTag);
+     delay = Simulator::Now() - pdcpTag.GetSenderTimestamp();
+     m_rxPdu(m_rnti, m_lcid, p->GetSize(), delay.GetNanoSeconds());
+ 
+-    NrPdcpHeader pdcpHeader;
+-    p->RemoveHeader(pdcpHeader);
+-    NS_LOG_LOGIC("PDCP header: " << pdcpHeader);
+-
+     m_rxSequenceNumber = pdcpHeader.GetSequenceNumber() + 1;
+     if (m_rxSequenceNumber > m_maxPdcpSn)
+     {
+@@ -221,4 +255,15 @@ NrPdcp::DoReceivePdu(Ptr<Packet> p)
+     m_pdcpSapUser->ReceivePdcpSdu(params);
+ }
+ 
++void
++NrPdcp::SendRepetition(Ptr<Packet> p)
++{
++    NS_LOG_FUNCTION(this << m_rnti << static_cast<uint16_t>(m_lcid) << p->GetSize());
++    NrRlcSapProvider::TransmitPdcpPduParameters txParams;
++    txParams.rnti = m_rnti;
++    txParams.lcid = m_lcid;
++    txParams.pdcpPdu = p;
++    m_rlcSapProvider->TransmitPdcpPdu(txParams);
++}
++
+ } // namespace ns3
+diff --git a/model/nr-pdcp.h b/model/nr-pdcp.h
+index 4650a7d..b71c6e9 100644
+--- a/model/nr-pdcp.h
++++ b/model/nr-pdcp.h
+@@ -14,6 +14,8 @@
+ #include "ns3/trace-source-accessor.h"
+ #include "ns3/traced-value.h"
+ 
++#include <unordered_set>
++
+ namespace ns3
+ {
+ 
+@@ -136,6 +138,12 @@ class NrPdcp : public Object // SimpleRefCount<NrPdcp>
+      */
+     virtual void DoTransmitPdcpSdu(NrPdcpSapProvider::TransmitPdcpSduParameters params);
+ 
++    /**
++     * Send one extra copy of an already-headered PDCP PDU.
++     * @param p packet including the PDCP header and sender-timestamp tag
++     */
++    void SendRepetition(Ptr<Packet> p);
++
+     NrPdcpSapUser* m_pdcpSapUser;         ///< PDCP SAP user
+     NrPdcpSapProvider* m_pdcpSapProvider; ///< PDCP SAP provider
+ 
+@@ -177,6 +185,10 @@ class NrPdcp : public Object // SimpleRefCount<NrPdcp>
+      * Constants. See section 7.2 in TS 36.323
+      */
+     static const uint16_t m_maxPdcpSn = 4095;
++
++    uint8_t m_numRepetitions{0};             ///< Extra PDCP copies (0 = off)
++    uint32_t m_repetitionDelayMs{1};         ///< Delay between successive copies (ms)
++    std::unordered_set<uint16_t> m_rxDupSns; ///< Receiver-side sequence numbers already delivered
+ };
+ 
+ } // namespace ns3

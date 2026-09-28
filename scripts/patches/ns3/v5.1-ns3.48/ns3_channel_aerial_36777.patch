@@ -1,0 +1,846 @@
+diff --git a/src/propagation/model/three-gpp-aerial-propagation-loss-model.cc b/src/propagation/model/three-gpp-aerial-propagation-loss-model.cc
+new file mode 100644
+index 0000000..125196d
+--- /dev/null
++++ b/src/propagation/model/three-gpp-aerial-propagation-loss-model.cc
+@@ -0,0 +1,535 @@
++/*
++ * Copyright (c) 2026 CORNET
++ *
++ * SPDX-License-Identifier: GPL-2.0-only
++ */
++
++#include "three-gpp-aerial-propagation-loss-model.h"
++
++#include "ns3/boolean.h"
++#include "ns3/double.h"
++#include "ns3/enum.h"
++#include "ns3/log.h"
++#include "ns3/mobility-model.h"
++
++#include <algorithm>
++#include <cmath>
++
++#ifndef M_PI
++#define M_PI 3.14159265358979323846
++#endif
++
++namespace ns3
++{
++
++NS_LOG_COMPONENT_DEFINE("ThreeGppAerialPropagationLossModel");
++
++namespace
++{
++
++double
++PiecewiseLos(double d2d, double d1, double p1)
++{
++    if (d2d <= d1)
++    {
++        return 1.0;
++    }
++    if (p1 <= 0.0)
++    {
++        p1 = 1.0;
++    }
++    double p = d1 / d2d + std::exp(-d2d / p1) * (1.0 - d1 / d2d);
++    return std::min(1.0, std::max(0.0, p));
++}
++
++double
++UmaTerrestrialLos(double d2d, double hUt)
++{
++    if (d2d <= 18.0)
++    {
++        return 1.0;
++    }
++    double c = 0.0;
++    if (hUt > 13.0)
++    {
++        c = std::pow((hUt - 13.0) / 10.0, 1.5);
++    }
++    double base = 18.0 / d2d + std::exp(-d2d / 63.0) * (1.0 - 18.0 / d2d);
++    return base * (1.0 + c * 1.25 * std::pow(d2d / 100.0, 3.0) * std::exp(-d2d / 150.0));
++}
++
++double
++UmiTerrestrialLos(double d2d)
++{
++    if (d2d <= 18.0)
++    {
++        return 1.0;
++    }
++    return 18.0 / d2d + std::exp(-d2d / 36.0) * (1.0 - 18.0 / d2d);
++}
++
++double
++RmaTerrestrialLos(double d2d)
++{
++    if (d2d <= 10.0)
++    {
++        return 1.0;
++    }
++    return std::exp(-(d2d - 10.0) / 1000.0);
++}
++
++double
++FreeSpaceTermDb(double fcGHz)
++{
++    return 20.0 * std::log10(40.0 * M_PI * fcGHz / 3.0);
++}
++
++} // namespace
++
++NS_OBJECT_ENSURE_REGISTERED(ThreeGppAerialChannelConditionModel);
++
++TypeId
++ThreeGppAerialChannelConditionModel::GetTypeId()
++{
++    static TypeId tid =
++        TypeId("ns3::ThreeGppAerialChannelConditionModel")
++            .SetParent<ThreeGppChannelConditionModel>()
++            .SetGroupName("Propagation")
++            .AddConstructor<ThreeGppAerialChannelConditionModel>()
++            .AddAttribute("Scenario",
++                          "TR 36.777 aerial scenario.",
++                          EnumValue(ThreeGppAerialChannelConditionModel::UMa_AV),
++                          MakeEnumAccessor<ThreeGppAerialChannelConditionModel::Scenario>(
++                              &ThreeGppAerialChannelConditionModel::SetScenario,
++                              &ThreeGppAerialChannelConditionModel::GetScenario),
++                          MakeEnumChecker(ThreeGppAerialChannelConditionModel::UMa_AV,
++                                          "UMa-AV",
++                                          ThreeGppAerialChannelConditionModel::UMi_AV,
++                                          "UMi-AV",
++                                          ThreeGppAerialChannelConditionModel::RMa_AV,
++                                          "RMa-AV"));
++    return tid;
++}
++
++ThreeGppAerialChannelConditionModel::ThreeGppAerialChannelConditionModel()
++    : ThreeGppChannelConditionModel(),
++      m_scenario(UMa_AV),
++      m_heightClampCount(0)
++{
++    NS_LOG_FUNCTION(this);
++}
++
++ThreeGppAerialChannelConditionModel::~ThreeGppAerialChannelConditionModel()
++{
++    NS_LOG_FUNCTION(this);
++}
++
++void
++ThreeGppAerialChannelConditionModel::SetScenario(Scenario scenario)
++{
++    m_scenario = scenario;
++}
++
++ThreeGppAerialChannelConditionModel::Scenario
++ThreeGppAerialChannelConditionModel::GetScenario() const
++{
++    return m_scenario;
++}
++
++uint32_t
++ThreeGppAerialChannelConditionModel::GetHeightClampCount() const
++{
++    return m_heightClampCount;
++}
++
++double
++ThreeGppAerialChannelConditionModel::GetLosProbability(double d2d, double hUt) const
++{
++    if (hUt > 300.0)
++    {
++        NS_LOG_WARN("TR 36.777 aerial UT height " << hUt
++                                                   << " m exceeds 300 m; clamping to 300 m");
++        ++m_heightClampCount;
++        hUt = 300.0;
++    }
++    else if (hUt < 1.5)
++    {
++        NS_LOG_WARN("TR 36.777 aerial UT height " << hUt
++                                                   << " m is below 1.5 m; clamping to 1.5 m");
++        ++m_heightClampCount;
++        hUt = 1.5;
++    }
++
++    switch (m_scenario)
++    {
++    case UMa_AV:
++        if (hUt <= 22.5)
++        {
++            return UmaTerrestrialLos(d2d, hUt);
++        }
++        if (hUt > 100.0)
++        {
++            return 1.0;
++        }
++        return PiecewiseLos(d2d,
++                            std::max(460.0 * std::log10(hUt) - 700.0, 18.0),
++                            4300.0 * std::log10(hUt) - 3800.0);
++    case UMi_AV:
++        if (hUt <= 22.5)
++        {
++            return UmiTerrestrialLos(d2d);
++        }
++        return PiecewiseLos(d2d,
++                            std::max(294.05 * std::log10(hUt) - 432.94, 18.0),
++                            233.98 * std::log10(hUt) - 0.95);
++    case RMa_AV:
++        if (hUt <= 10.0)
++        {
++            return RmaTerrestrialLos(d2d);
++        }
++        if (hUt > 40.0)
++        {
++            return 1.0;
++        }
++        return PiecewiseLos(d2d,
++                            std::max(1350.8 * std::log10(hUt) - 1602.0, 18.0),
++                            std::max(15021.0 * std::log10(hUt) - 16053.0, 1000.0));
++    }
++    return 1.0;
++}
++
++double
++ThreeGppAerialChannelConditionModel::ComputePlos(Ptr<const MobilityModel> a,
++                                                 Ptr<const MobilityModel> b) const
++{
++    Vector pa = a->GetPosition();
++    Vector pb = b->GetPosition();
++    double d2d = std::hypot(pa.x - pb.x, pa.y - pb.y);
++    double bs = 25.0;
++    if (m_scenario == UMi_AV)
++    {
++        bs = 10.0;
++    }
++    else if (m_scenario == RMa_AV)
++    {
++        bs = 35.0;
++    }
++    double hUt = pb.z;
++    double hBs = pa.z;
++    if (std::abs(pb.z - bs) < std::abs(pa.z - bs))
++    {
++        hUt = pa.z;
++        hBs = pb.z;
++    }
++    if (std::abs(hBs - bs) > 0.5)
++    {
++        NS_LOG_WARN("TR 36.777 LOS probability assumes a BS height of " << bs << " m");
++    }
++    return GetLosProbability(d2d, hUt);
++}
++
++NS_OBJECT_ENSURE_REGISTERED(ThreeGppAerialPropagationLossModel);
++
++TypeId
++ThreeGppAerialPropagationLossModel::GetTypeId()
++{
++    static TypeId tid =
++        TypeId("ns3::ThreeGppAerialPropagationLossModel")
++            .SetParent<ThreeGppPropagationLossModel>()
++            .SetGroupName("Propagation")
++            .AddConstructor<ThreeGppAerialPropagationLossModel>()
++            .AddAttribute("Scenario",
++                          "TR 36.777 aerial scenario.",
++                          EnumValue(ThreeGppAerialChannelConditionModel::UMa_AV),
++                          MakeEnumAccessor<Scenario>(&ThreeGppAerialPropagationLossModel::SetScenario,
++                                                     &ThreeGppAerialPropagationLossModel::GetScenario),
++                          MakeEnumChecker(ThreeGppAerialChannelConditionModel::UMa_AV,
++                                          "UMa-AV",
++                                          ThreeGppAerialChannelConditionModel::UMi_AV,
++                                          "UMi-AV",
++                                          ThreeGppAerialChannelConditionModel::RMa_AV,
++                                          "RMa-AV"));
++    return tid;
++}
++
++ThreeGppAerialPropagationLossModel::ThreeGppAerialPropagationLossModel()
++    : ThreeGppPropagationLossModel(),
++      m_scenario(ThreeGppAerialChannelConditionModel::UMa_AV),
++      m_heightClampCount(0)
++{
++    NS_LOG_FUNCTION(this);
++    m_buildingPenLossesEnabled = false;
++    m_frequency = 2.0e9;
++    m_alwaysLos = CreateObject<AlwaysLosChannelConditionModel>();
++    m_neverLos = CreateObject<NeverLosChannelConditionModel>();
++    m_channelConditionModel = CreateObject<ThreeGppAerialChannelConditionModel>();
++    SetScenario(ThreeGppAerialChannelConditionModel::UMa_AV);
++}
++
++ThreeGppAerialPropagationLossModel::~ThreeGppAerialPropagationLossModel()
++{
++    NS_LOG_FUNCTION(this);
++}
++
++void
++ThreeGppAerialPropagationLossModel::SetScenario(Scenario scenario)
++{
++    NS_LOG_FUNCTION(this << scenario);
++    m_scenario = scenario;
++    switch (scenario)
++    {
++    case ThreeGppAerialChannelConditionModel::UMi_AV:
++        m_low = CreateObject<ThreeGppUmiStreetCanyonPropagationLossModel>();
++        break;
++    case ThreeGppAerialChannelConditionModel::RMa_AV:
++        m_low = CreateObject<ThreeGppRmaPropagationLossModel>();
++        break;
++    case ThreeGppAerialChannelConditionModel::UMa_AV:
++    default:
++        m_low = CreateObject<ThreeGppUmaPropagationLossModel>();
++        break;
++    }
++    m_low->SetAttribute("ShadowingEnabled", BooleanValue(false));
++    m_low->SetAttribute("BuildingPenetrationLossesEnabled", BooleanValue(false));
++    Ptr<ThreeGppAerialChannelConditionModel> aerial =
++        DynamicCast<ThreeGppAerialChannelConditionModel>(m_channelConditionModel);
++    if (aerial)
++    {
++        aerial->SetScenario(scenario);
++    }
++}
++
++ThreeGppAerialPropagationLossModel::Scenario
++ThreeGppAerialPropagationLossModel::GetScenario() const
++{
++    return m_scenario;
++}
++
++uint32_t
++ThreeGppAerialPropagationLossModel::GetHeightClampCount() const
++{
++    return m_heightClampCount;
++}
++
++double
++ThreeGppAerialPropagationLossModel::NominalBsHeight() const
++{
++    switch (m_scenario)
++    {
++    case ThreeGppAerialChannelConditionModel::UMi_AV:
++        return 10.0;
++    case ThreeGppAerialChannelConditionModel::RMa_AV:
++        return 35.0;
++    case ThreeGppAerialChannelConditionModel::UMa_AV:
++    default:
++        return 25.0;
++    }
++}
++
++double
++ThreeGppAerialPropagationLossModel::LowHeightMax() const
++{
++    return m_scenario == ThreeGppAerialChannelConditionModel::RMa_AV ? 10.0 : 22.5;
++}
++
++ThreeGppAerialPropagationLossModel::Geometry
++ThreeGppAerialPropagationLossModel::MakeGeometry(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const
++{
++    Vector pa = a->GetPosition();
++    Vector pb = b->GetPosition();
++    Geometry link;
++    link.d2d = std::hypot(pa.x - pb.x, pa.y - pb.y);
++    double bs = NominalBsHeight();
++    link.hUt = pb.z;
++    link.hBs = pa.z;
++    if (std::abs(pb.z - bs) < std::abs(pa.z - bs))
++    {
++        link.hUt = pa.z;
++        link.hBs = pb.z;
++    }
++    if (std::abs(link.hBs - bs) > 0.5)
++    {
++        NS_LOG_WARN("TR 36.777 path loss assumes a BS height of " << bs << " m");
++    }
++    if (link.hUt > 300.0)
++    {
++        NS_LOG_WARN("TR 36.777 aerial UT height " << link.hUt
++                                                   << " m exceeds 300 m; clamping to 300 m");
++        ++m_heightClampCount;
++        link.hUt = 300.0;
++    }
++    else if (link.hUt < 1.5)
++    {
++        NS_LOG_WARN("TR 36.777 aerial UT height " << link.hUt
++                                                   << " m is below 1.5 m; clamping to 1.5 m");
++        ++m_heightClampCount;
++        link.hUt = 1.5;
++    }
++    link.d3d = std::hypot(link.d2d, link.hBs - link.hUt);
++    if (link.d3d < 1.0)
++    {
++        link.d3d = 1.0;
++    }
++    double maxD2d = m_scenario == ThreeGppAerialChannelConditionModel::RMa_AV ? 10000.0 : 4000.0;
++    if (link.d2d > maxD2d)
++    {
++        NS_LOG_WARN("TR 36.777 2D distance is outside the aerial applicability range");
++    }
++    return link;
++}
++
++double
++ThreeGppAerialPropagationLossModel::TerrestrialLoss(bool los,
++                                                    Ptr<MobilityModel> a,
++                                                    Ptr<MobilityModel> b) const
++{
++    m_low->SetFrequency(m_frequency);
++    m_low->SetChannelConditionModel(los ? m_alwaysLos : m_neverLos);
++    return -m_low->CalcRxPower(0.0, a, b);
++}
++
++double
++ThreeGppAerialPropagationLossModel::LosDb(const Geometry& link, double fcGHz) const
++{
++    double d3 = link.d3d;
++    double h = link.hUt;
++    switch (m_scenario)
++    {
++    case ThreeGppAerialChannelConditionModel::UMa_AV:
++        return 28.0 + 22.0 * std::log10(d3) + 20.0 * std::log10(fcGHz);
++    case ThreeGppAerialChannelConditionModel::UMi_AV: {
++        double formula =
++            30.9 + (22.25 - 0.5 * std::log10(h)) * std::log10(d3) + 20.0 * std::log10(fcGHz);
++        double freeSpace = 20.0 * std::log10(d3) + FreeSpaceTermDb(fcGHz);
++        return std::max(freeSpace, formula);
++    }
++    case ThreeGppAerialChannelConditionModel::RMa_AV: {
++        double slope = std::max(23.9 - 1.8 * std::log10(h), 20.0);
++        return slope * std::log10(d3) + FreeSpaceTermDb(fcGHz);
++    }
++    }
++    return 0.0;
++}
++
++double
++ThreeGppAerialPropagationLossModel::NlosDb(const Geometry& link, double fcGHz) const
++{
++    double d3 = link.d3d;
++    double h = link.hUt;
++    double los = LosDb(link, fcGHz);
++    switch (m_scenario)
++    {
++    case ThreeGppAerialChannelConditionModel::UMa_AV:
++        if (h > 100.0)
++        {
++            NS_LOG_WARN("UMa-AV NLOS path loss is specified only up to 100 m; using 100 m");
++            h = 100.0;
++        }
++        return -17.5 + (46.0 - 7.0 * std::log10(h)) * std::log10(d3) + FreeSpaceTermDb(fcGHz);
++    case ThreeGppAerialChannelConditionModel::UMi_AV: {
++        double nlos =
++            32.4 + (43.2 - 7.6 * std::log10(h)) * std::log10(d3) + 20.0 * std::log10(fcGHz);
++        return std::max(los, nlos);
++    }
++    case ThreeGppAerialChannelConditionModel::RMa_AV: {
++        double nlos = -12.0 + (35.0 - 5.3 * std::log10(h)) * std::log10(d3) + FreeSpaceTermDb(fcGHz);
++        return std::max(los, nlos);
++    }
++    }
++    return los;
++}
++
++double
++ThreeGppAerialPropagationLossModel::GetLossLos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const
++{
++    NS_LOG_FUNCTION(this);
++    NS_ASSERT_MSG(m_frequency > 0.0, "First set the centre frequency");
++    Geometry link = MakeGeometry(a, b);
++    if (link.hUt <= LowHeightMax())
++    {
++        return TerrestrialLoss(true, a, b);
++    }
++    return LosDb(link, m_frequency / 1.0e9);
++}
++
++double
++ThreeGppAerialPropagationLossModel::GetLossNlos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const
++{
++    NS_LOG_FUNCTION(this);
++    NS_ASSERT_MSG(m_frequency > 0.0, "First set the centre frequency");
++    Geometry link = MakeGeometry(a, b);
++    if (link.hUt <= LowHeightMax())
++    {
++        return TerrestrialLoss(false, a, b);
++    }
++    return NlosDb(link, m_frequency / 1.0e9);
++}
++
++double
++ThreeGppAerialPropagationLossModel::GetShadowingStd(
++    Ptr<MobilityModel> a,
++    Ptr<MobilityModel> b,
++    ChannelCondition::LosConditionValue cond) const
++{
++    Geometry link = MakeGeometry(a, b);
++    bool los = cond == ChannelCondition::LosConditionValue::LOS;
++    if (link.hUt <= LowHeightMax())
++    {
++        if (m_scenario == ThreeGppAerialChannelConditionModel::RMa_AV)
++        {
++            return los ? 4.0 : 8.0;
++        }
++        if (m_frequency < 6.0e9)
++        {
++            return 7.0;
++        }
++        if (m_scenario == ThreeGppAerialChannelConditionModel::UMi_AV)
++        {
++            return los ? 4.0 : 7.82;
++        }
++        return los ? 4.0 : 6.0;
++    }
++    switch (m_scenario)
++    {
++    case ThreeGppAerialChannelConditionModel::UMa_AV:
++        return los ? 4.64 * std::exp(-0.0066 * link.hUt) : 6.0;
++    case ThreeGppAerialChannelConditionModel::UMi_AV:
++        return los ? std::max(5.0 * std::exp(-0.01 * link.hUt), 2.0) : 8.0;
++    case ThreeGppAerialChannelConditionModel::RMa_AV:
++        return los ? 4.2 * std::exp(-0.0046 * link.hUt) : 6.0;
++    }
++    return 6.0;
++}
++
++double
++ThreeGppAerialPropagationLossModel::GetShadowingCorrelationDistance(
++    ChannelCondition::LosConditionValue cond) const
++{
++    // This hook has no UT height, so the distance follows TR 38.901.
++    // Table B-3's 25 m aerial recalculation is outside this method.
++    if (cond == ChannelCondition::LosConditionValue::LOS)
++    {
++        if (m_scenario == ThreeGppAerialChannelConditionModel::UMi_AV)
++        {
++            return 10.0;
++        }
++        return 37.0;
++    }
++    if (m_scenario == ThreeGppAerialChannelConditionModel::UMi_AV)
++    {
++        return 13.0;
++    }
++    if (m_scenario == ThreeGppAerialChannelConditionModel::RMa_AV)
++    {
++        return 120.0;
++    }
++    return 50.0;
++}
++
++double
++ThreeGppAerialPropagationLossModel::GetO2iDistance2dIn() const
++{
++    return 0.0;
++}
++
++} // namespace ns3
+diff --git a/src/propagation/model/three-gpp-aerial-propagation-loss-model.h b/src/propagation/model/three-gpp-aerial-propagation-loss-model.h
+new file mode 100644
+index 0000000..dce1ff5
+--- /dev/null
++++ b/src/propagation/model/three-gpp-aerial-propagation-loss-model.h
+@@ -0,0 +1,117 @@
++/*
++ * Copyright (c) 2026 CORNET
++ *
++ * SPDX-License-Identifier: GPL-2.0-only
++ *
++ * TR 36.777 V15.0.0 Annex B path loss and LOS probability for aerial UEs.
++ * Scope is path loss and LOS only. Fast fading stays the terrestrial model.
++ */
++
++#ifndef THREE_GPP_AERIAL_PROPAGATION_LOSS_MODEL_H
++#define THREE_GPP_AERIAL_PROPAGATION_LOSS_MODEL_H
++
++#include "three-gpp-propagation-loss-model.h"
++
++namespace ns3
++{
++
++/**
++ * LOS probability for UMa-AV, UMi-AV, and RMa-AV (TR 36.777 Table B-1).
++ *
++ * Below the scenario height threshold the terrestrial TR 38.901 probability is
++ * used. Above the maximum height of 300 m the height is clamped and a warning
++ * is logged.
++ */
++class ThreeGppAerialChannelConditionModel : public ThreeGppChannelConditionModel
++{
++  public:
++    enum Scenario
++    {
++        UMa_AV,
++        UMi_AV,
++        RMa_AV
++    };
++
++    static TypeId GetTypeId();
++
++    ThreeGppAerialChannelConditionModel();
++    ~ThreeGppAerialChannelConditionModel() override;
++
++    void SetScenario(Scenario scenario);
++    Scenario GetScenario() const;
++
++    /**
++     * LOS probability for a 2D distance and UT height.
++     *
++     * Heights outside 1.5 m..300 m are clamped. Each clamp increments
++     * GetHeightClampCount() and logs a warning.
++     */
++    double GetLosProbability(double d2dMeters, double hUtMeters) const;
++
++    uint32_t GetHeightClampCount() const;
++
++  private:
++    double ComputePlos(Ptr<const MobilityModel> a, Ptr<const MobilityModel> b) const override;
++
++    Scenario m_scenario;
++    mutable uint32_t m_heightClampCount;
++};
++
++/**
++ * Path loss for UMa-AV, UMi-AV, and RMa-AV (TR 36.777 Tables B-2 and B-3).
++ *
++ * Below the scenario height threshold the loss is delegated to the terrestrial
++ * UMa, UMi-Street Canyon, or RMa model. Above 300 m the UT height is clamped
++ * and a warning is logged. Building penetration is left off: the scope is
++ * aerial path loss only.
++ */
++class ThreeGppAerialPropagationLossModel : public ThreeGppPropagationLossModel
++{
++  public:
++    using Scenario = ThreeGppAerialChannelConditionModel::Scenario;
++
++    static TypeId GetTypeId();
++
++    ThreeGppAerialPropagationLossModel();
++    ~ThreeGppAerialPropagationLossModel() override;
++
++    void SetScenario(Scenario scenario);
++    Scenario GetScenario() const;
++
++    uint32_t GetHeightClampCount() const;
++
++  private:
++    struct Geometry
++    {
++        double d2d;
++        double d3d;
++        double hBs;
++        double hUt;
++    };
++
++    double GetLossLos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const override;
++    double GetLossNlos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const override;
++    double GetShadowingStd(Ptr<MobilityModel> a,
++                           Ptr<MobilityModel> b,
++                           ChannelCondition::LosConditionValue cond) const override;
++    double GetShadowingCorrelationDistance(
++        ChannelCondition::LosConditionValue cond) const override;
++    double GetO2iDistance2dIn() const override;
++
++    Geometry MakeGeometry(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const;
++    double TerrestrialLoss(bool los, Ptr<MobilityModel> a, Ptr<MobilityModel> b) const;
++    double LosDb(const Geometry& link, double fcGHz) const;
++    double NlosDb(const Geometry& link, double fcGHz) const;
++    double NominalBsHeight() const;
++    double LowHeightMax() const;
++
++    Scenario m_scenario;
++    Ptr<ThreeGppPropagationLossModel> m_low;
++    Ptr<ChannelConditionModel> m_alwaysLos;
++    Ptr<ChannelConditionModel> m_neverLos;
++    mutable uint32_t m_heightClampCount;
++};
++
++} // namespace ns3
++
++#endif // THREE_GPP_AERIAL_PROPAGATION_LOSS_MODEL_H
+diff --git a/src/propagation/test/three-gpp-aerial-propagation-loss-model-test-suite.cc b/src/propagation/test/three-gpp-aerial-propagation-loss-model-test-suite.cc
+new file mode 100644
+index 0000000..6978fb6
+--- /dev/null
++++ b/src/propagation/test/three-gpp-aerial-propagation-loss-model-test-suite.cc
+@@ -0,0 +1,149 @@
++/*
++ * Copyright (c) 2026 CORNET
++ *
++ * SPDX-License-Identifier: GPL-2.0-only
++ */
++
++#include "ns3/boolean.h"
++#include "ns3/constant-position-mobility-model.h"
++#include "ns3/double.h"
++#include "ns3/log.h"
++#include "ns3/node-container.h"
++#include "ns3/simulator.h"
++#include "ns3/string.h"
++#include "ns3/test.h"
++#include "ns3/three-gpp-aerial-propagation-loss-model.h"
++#include "ns3/three-gpp-propagation-loss-model.h"
++
++using namespace ns3;
++
++/**
++ * TR 36.777 Annex B breakpoints, including the height clamp.
++ */
++class ThreeGppAerialPropagationLossTestCase : public TestCase
++{
++  public:
++    ThreeGppAerialPropagationLossTestCase()
++        : TestCase("TR 36.777 aerial path loss and LOS probability")
++    {
++    }
++
++  private:
++    void DoRun() override
++    {
++        NodeContainer nodes;
++        nodes.Create(2);
++        Ptr<MobilityModel> bs = CreateObject<ConstantPositionMobilityModel>();
++        Ptr<MobilityModel> ue = CreateObject<ConstantPositionMobilityModel>();
++        nodes.Get(0)->AggregateObject(bs);
++        nodes.Get(1)->AggregateObject(ue);
++
++        Ptr<ThreeGppAerialPropagationLossModel> loss =
++            CreateObject<ThreeGppAerialPropagationLossModel>();
++        loss->SetAttribute("ShadowingEnabled", BooleanValue(false));
++        loss->SetAttribute("Frequency", DoubleValue(2.0e9));
++        loss->SetChannelConditionModel(CreateObject<AlwaysLosChannelConditionModel>());
++
++        // UMa-AV, h_UT = 100 m, d_2D = 500 m, h_BS = 25 m, f_c = 2 GHz.
++        // PL = 28 + 22*log10(d_3D) + 20*log10(f_c) = 93.5042364921 dB.
++        bs->SetPosition(Vector(0.0, 0.0, 25.0));
++        ue->SetPosition(Vector(500.0, 0.0, 100.0));
++        NS_TEST_EXPECT_MSG_EQ_TOL(loss->CalcRxPower(0.0, bs, ue),
++                                  -93.5042364921,
++                                  0.1,
++                                  "UMa-AV LOS at 100 m / 500 m");
++
++        loss->SetChannelConditionModel(CreateObject<NeverLosChannelConditionModel>());
++        ue->SetPosition(Vector(500.0, 0.0, 50.0));
++        // UMa-AV NLOS at h = 50 m: 113.0352013492 dB.
++        NS_TEST_EXPECT_MSG_EQ_TOL(loss->CalcRxPower(0.0, bs, ue),
++                                  -113.0352013492,
++                                  0.1,
++                                  "UMa-AV NLOS at 50 m / 500 m");
++
++        loss->SetAttribute("Scenario", StringValue("UMi-AV"));
++        loss->SetChannelConditionModel(CreateObject<AlwaysLosChannelConditionModel>());
++        bs->SetPosition(Vector(0.0, 0.0, 10.0));
++        ue->SetPosition(Vector(500.0, 0.0, 100.0));
++        NS_TEST_EXPECT_MSG_EQ_TOL(loss->CalcRxPower(0.0, bs, ue),
++                                  -94.4208474616,
++                                  0.1,
++                                  "UMi-AV LOS at 100 m / 500 m");
++
++        loss->SetAttribute("Scenario", StringValue("RMa-AV"));
++        bs->SetPosition(Vector(0.0, 0.0, 35.0));
++        ue->SetPosition(Vector(500.0, 0.0, 50.0));
++        NS_TEST_EXPECT_MSG_EQ_TOL(loss->CalcRxPower(0.0, bs, ue),
++                                  -94.7179822032,
++                                  0.1,
++                                  "RMa-AV LOS at 50 m / 500 m");
++
++        // Above 300 m the height is clamped to 300 m and a warning is logged.
++        loss->SetAttribute("Scenario", StringValue("UMa-AV"));
++        bs->SetPosition(Vector(0.0, 0.0, 25.0));
++        ue->SetPosition(Vector(500.0, 0.0, 300.0));
++        double atMax = loss->CalcRxPower(0.0, bs, ue);
++        NS_TEST_EXPECT_MSG_EQ(loss->GetHeightClampCount(), 0, "300 m is inside the model");
++        ue->SetPosition(Vector(500.0, 0.0, 350.0));
++        double aboveMax = loss->CalcRxPower(0.0, bs, ue);
++        NS_TEST_EXPECT_MSG_EQ_TOL(aboveMax, atMax, 1e-6, "height above 300 m uses 300 m");
++        NS_TEST_EXPECT_MSG_GT(loss->GetHeightClampCount(), 0, "height clamp logs a warning");
++
++        // Below the UMa threshold the terrestrial UMa formula is used.
++        Ptr<ThreeGppUmaPropagationLossModel> uma = CreateObject<ThreeGppUmaPropagationLossModel>();
++        uma->SetAttribute("ShadowingEnabled", BooleanValue(false));
++        uma->SetAttribute("BuildingPenetrationLossesEnabled", BooleanValue(false));
++        uma->SetAttribute("Frequency", DoubleValue(2.0e9));
++        uma->SetChannelConditionModel(CreateObject<AlwaysLosChannelConditionModel>());
++        loss->SetChannelConditionModel(CreateObject<AlwaysLosChannelConditionModel>());
++        bs->SetPosition(Vector(0.0, 0.0, 25.0));
++        ue->SetPosition(Vector(100.0, 0.0, 1.5));
++        NS_TEST_EXPECT_MSG_EQ_TOL(loss->CalcRxPower(0.0, bs, ue),
++                                  uma->CalcRxPower(0.0, bs, ue),
++                                  0.05,
++                                  "UMa-AV below 22.5 m matches UMa");
++
++        Ptr<ThreeGppAerialChannelConditionModel> cond =
++            CreateObject<ThreeGppAerialChannelConditionModel>();
++        NS_TEST_EXPECT_MSG_EQ_TOL(cond->GetLosProbability(1000.0, 50.0),
++                                  0.7720518705,
++                                  1e-6,
++                                  "UMa-AV LOS probability at 50 m / 1000 m");
++        NS_TEST_EXPECT_MSG_EQ_TOL(cond->GetLosProbability(5000.0, 150.0),
++                                  1.0,
++                                  1e-9,
++                                  "UMa-AV is LOS above 100 m");
++        cond->SetAttribute("Scenario", StringValue("UMi-AV"));
++        NS_TEST_EXPECT_MSG_EQ_TOL(cond->GetLosProbability(500.0, 30.0),
++                                  0.2619728828,
++                                  1e-6,
++                                  "UMi-AV LOS probability at 30 m / 500 m");
++        double umiAt300 = cond->GetLosProbability(800.0, 300.0);
++        double umiAbove = cond->GetLosProbability(800.0, 350.0);
++        NS_TEST_EXPECT_MSG_EQ_TOL(umiAbove, umiAt300, 1e-9, "UMi-AV LOS clamps height to 300 m");
++        NS_TEST_EXPECT_MSG_GT(cond->GetHeightClampCount(), 0, "LOS model logs the height clamp");
++        cond->SetAttribute("Scenario", StringValue("RMa-AV"));
++        NS_TEST_EXPECT_MSG_EQ_TOL(cond->GetLosProbability(2000.0, 20.0),
++                                  0.5976747604,
++                                  1e-6,
++                                  "RMa-AV LOS probability at 20 m / 2000 m");
++        NS_TEST_EXPECT_MSG_EQ_TOL(cond->GetLosProbability(5000.0, 80.0),
++                                  1.0,
++                                  1e-9,
++                                  "RMa-AV is LOS above 40 m");
++
++        Simulator::Destroy();
++    }
++};
++
++class ThreeGppAerialPropagationLossTestSuite : public TestSuite
++{
++  public:
++    ThreeGppAerialPropagationLossTestSuite()
++        : TestSuite("three-gpp-aerial-propagation-loss-model", Type::UNIT)
++    {
++        AddTestCase(new ThreeGppAerialPropagationLossTestCase, TestCase::Duration::QUICK);
++    }
++};
++
++static ThreeGppAerialPropagationLossTestSuite g_threeGppAerialPropagationLossTestSuite;
+diff --git a/src/propagation/CMakeLists.txt b/src/propagation/CMakeLists.txt
+index e21429e..249720e 100644
+--- a/src/propagation/CMakeLists.txt
++++ b/src/propagation/CMakeLists.txt
+@@ -13,6 +13,7 @@ build_lib(
+     model/propagation-delay-model.cc
+     model/propagation-loss-model.cc
+     model/three-gpp-propagation-loss-model.cc
++    model/three-gpp-aerial-propagation-loss-model.cc
+     model/three-gpp-v2v-propagation-loss-model.cc
+   HEADER_FILES
+     model/channel-condition-model.h
+@@ -29,6 +30,7 @@ build_lib(
+     model/propagation-environment.h
+     model/propagation-loss-model.h
+     model/three-gpp-propagation-loss-model.h
++    model/three-gpp-aerial-propagation-loss-model.h
+     model/three-gpp-v2v-propagation-loss-model.h
+   LIBRARIES_TO_LINK ${libmobility}
+   TEST_SOURCES
+@@ -40,5 +42,6 @@ build_lib(
+     test/probabilistic-v2v-channel-condition-model-test.cc
+     test/propagation-loss-model-test-suite.cc
+     test/three-gpp-propagation-loss-model-test-suite.cc
++    test/three-gpp-aerial-propagation-loss-model-test-suite.cc
+     test/three-gpp-ntn-propagation-loss-model-test-suite.cc
+ )

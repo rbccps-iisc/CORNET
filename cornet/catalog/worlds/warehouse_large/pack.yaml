@@ -1,0 +1,55 @@
+name: warehouse_large
+kind: worlds
+version: "1"
+description: ARTPARK large warehouse extended to the TR 38.901 InF small hall, 120 x 60 m. Geometry is not imported yet.
+provides: {}
+requires:
+  gazebo: classic-11
+compatible:
+  robots: [turtlebot3]
+  networks: [nr, lte, wifi_ns3]
+license:
+  spdx: project-owned
+  vendored: false
+  provenance: warehouse_gazebo by Kavish Shah and sadgun; upstream LICENSE is still requested
+  authors:
+    - Kavish Shah
+    - sadgun
+bounds:
+  x_min: 0
+  x_max: 120
+  y_min: 0
+  y_max: 60
+supported_deployments:
+  - single_cell
+  - 3gpp_inf
+  - 3gpp_inh_office
+  - custom
+supported_anchors:
+  - centre_site
+  - cell_edge_0_1
+  - sector_boundary
+  - crossing
+mounting_points:
+  - name: inf_18_low
+    table: TR 38.901 Table 7.2-1 and Table 7.8-7
+    sites: 18
+    isd_m: 20
+    height_m: 1.5
+    hall_m: [120, 60, 10]
+  - name: inf_18_high
+    table: TR 38.901 Table 7.2-1
+    sites: 18
+    isd_m: 20
+    height_m: 8
+    hall_m: [120, 60, 10]
+  - name: inh_12
+    table: TR 38.901 Table 7.2-4 InH-Office
+    sites: 12
+    isd_m: 20
+    height_m: 3
+    hall_m: [120, 50, 3]
+notes: >
+  spawn_ap.py in the upstream package returns the undefined name accesspoint_namespace.
+  An Apache-2.0 LICENSE has been requested from the ARTPARK authors and is not in the tree yet.
+  Static human meshes are not imported; population actors replace them.

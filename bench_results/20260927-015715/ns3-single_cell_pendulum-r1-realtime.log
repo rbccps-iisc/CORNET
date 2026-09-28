@@ -1,0 +1,2 @@
+CORNET_BENCH layout sites=1 cells=1 ues=1 trafficUes=1
+CORNET_BENCH done sim_s=1 realtime=1

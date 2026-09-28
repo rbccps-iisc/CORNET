@@ -105,6 +105,9 @@ class _FakeAoITracker:
     def export_json(self, path: Path):
         self.exported = path
 
+    def export_eval_statistics(self, path: Path):
+        self.eval_exported = path
+
 
 class _RunningProc:
     def __init__(self, args, **kwargs):
@@ -202,6 +205,7 @@ def test_ns3_plugin_passes_tun_args_and_collects_aoi(monkeypatch, tmp_path: Path
     out_dir = tmp_path / "results"
     plugin.collect(out_dir)
     assert plugin._aoi_tracker.exported == out_dir / "aoi_summary.json"
+    assert plugin._aoi_tracker.eval_exported == out_dir / "analysis" / "aoi_statistics.json"
     plugin.stop()
 
 
@@ -233,6 +237,76 @@ def test_ns3_plugin_tears_down_tun_on_early_launch_failure(monkeypatch, tmp_path
     assert plugin._tun_manager.teardown_calls == 1
 
 
+def test_timing_flags_only_for_bundled_or_opt_in(monkeypatch, tmp_path: Path) -> None:
+    ns3_dir = _prepare_ns3(monkeypatch, tmp_path)
+    launched: dict = {}
+
+    def fake_popen(args, **kwargs):
+        launched["args"] = args
+        return _RunningProc(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    bundled = _write_config(
+        tmp_path,
+        [
+            "  plugin: ns3",
+            "  type: ns3",
+            "  simulation_script: remote_robot_control-default",
+            "  nodes: []",
+        ],
+    )
+    plugin = Ns3Plugin()
+    plugin.configure(bundled, ExperimentContext(variant_id="test"))
+    plugin.start()
+    assert "remote_robot_control" in launched["args"]
+    assert (ns3_dir / "scratch" / "remote_robot_control-default.cc").is_file()
+    assert any(arg.startswith("--timingLog=") for arg in launched["args"])
+    timing_arg = next(arg for arg in launched["args"] if arg.startswith("--timingLog="))
+    assert Path(timing_arg.split("=", 1)[1]).is_absolute()
+    assert "--timingPeriodMs=10" in launched["args"]
+    assert not any(arg.startswith("--aoiStats=") for arg in launched["args"])
+
+    nr = ns3_dir / "contrib" / "nr"
+    nr.mkdir(parents=True)
+    (nr / ".cornet-patched-v4.2").write_text("patched\n")
+    plugin = Ns3Plugin()
+    plugin.configure(bundled, ExperimentContext(variant_id="v47"))
+    plugin.start()
+    stats_arg = next(arg for arg in launched["args"] if arg.startswith("--aoiStats="))
+    stats_path = Path(stats_arg.split("=", 1)[1])
+    assert stats_path.is_absolute()
+    assert stats_path.name == "aoi_statistics.json"
+
+    custom = _write_config(
+        tmp_path,
+        [
+            "  plugin: ns3",
+            "  type: ns3",
+            "  simulation_script: my_custom_scenario",
+            "  nodes: []",
+        ],
+    )
+    plugin = Ns3Plugin()
+    plugin.configure(custom, ExperimentContext(variant_id="test"))
+    plugin.start()
+    assert not any(arg.startswith("--timingLog=") for arg in launched["args"])
+
+    opted = _write_config(
+        tmp_path,
+        [
+            "  plugin: ns3",
+            "  type: ns3",
+            "  timing_log: true",
+            "  simulation_script: my_custom_scenario",
+            "  nodes: []",
+        ],
+    )
+    plugin = Ns3Plugin()
+    plugin.configure(opted, ExperimentContext(variant_id="test"))
+    plugin.start()
+    assert any(arg.startswith("--timingLog=") for arg in launched["args"])
+
+
 def test_6g_thz_requires_module(monkeypatch, tmp_path: Path) -> None:
     ns3_dir = tmp_path / "ns3"
     ns3_dir.mkdir()
@@ -253,3 +327,44 @@ def test_6g_thz_requires_module(monkeypatch, tmp_path: Path) -> None:
     plugin = Ns3Plugin()
     with pytest.raises(PluginConfigError, match="ns3-thz"):
         plugin.configure(cfg, ExperimentContext(variant_id="test"))
+
+
+def test_aerial_scenario_writes_path_loss_caveat(monkeypatch, tmp_path: Path) -> None:
+    _prepare_ns3(monkeypatch, tmp_path)
+
+    def fake_popen(args, **kwargs):
+        return _RunningProc(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    aerial = _write_config(
+        tmp_path,
+        [
+            "  plugin: ns3",
+            "  type: ns3",
+            "  simulation_script: my_custom_scenario",
+            "  channel: UMa-AV",
+            "  nodes: []",
+        ],
+    )
+    plugin = Ns3Plugin()
+    plugin.configure(aerial, ExperimentContext(variant_id="aerial"))
+    plugin.start()
+    provenance = (tmp_path / "results" / "provenance.json").read_text()
+    assert provenance == '{"caveat": "aerial path loss only", "scenarios": ["UMa-AV"]}\n'
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    other = _write_config(
+        plain,
+        [
+            "  plugin: ns3",
+            "  type: ns3",
+            "  simulation_script: my_custom_scenario",
+            "  channel: UMa",
+            "  nodes: []",
+        ],
+    )
+    plugin = Ns3Plugin()
+    plugin.configure(other, ExperimentContext(variant_id="plain"))
+    plugin.start()
+    assert not (plain / "results" / "provenance.json").exists()

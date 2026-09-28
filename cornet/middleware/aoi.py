@@ -142,6 +142,25 @@ class AoITracker:
             json.dump(data, f, indent=2)
         logger.info("AoI summary written to %s", out)
 
+    def export_eval_statistics(self, path: Path | str) -> None:
+        """Write per-flow mean AoI in milliseconds for the task eval tool.
+
+        The pendulum eval tool reads ``analysis/aoi_statistics.json`` and
+        averages each flow's ``mean``. ``summary()`` stores seconds.
+        """
+        import json
+
+        data = {
+            flow_id: {"mean": stats["mean_s"] * 1000.0}
+            for flow_id, stats in self.summary().items()
+            if "mean_s" in stats
+        }
+        if not data:
+            return
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(data, indent=2))
+
     def close(self) -> None:
         """Mark the tracker closed. Export remains available after close()."""
         self._closed = True

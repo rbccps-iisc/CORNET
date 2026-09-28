@@ -10,6 +10,7 @@ The generated file is returned as a Path and is suitable for ``ros2 launch <path
 
 from __future__ import annotations
 
+import os
 import textwrap
 import time
 from pathlib import Path
@@ -90,14 +91,18 @@ def generate(config: "RobotConfig", task_dir: Path) -> Path:
         "def generate_launch_description():",
         "    return LaunchDescription([",
         "        ExecuteProcess(",
-        f"            cmd=[\"gzserver\", \"--verbose\", \"{world_arg}\"],",
-        "            output=\"screen\",",
-        "        ),",
-        "        ExecuteProcess(",
-        "            cmd=[\"gzclient\"],",
+        "            cmd=[\"gzserver\", \"--verbose\", \"-s\", \"libgazebo_ros_init.so\",",
+        f"                 \"{world_arg}\"],",
         "            output=\"screen\",",
         "        ),",
     ]
+    if os.environ.get("DISPLAY"):
+        launch_lines.extend([
+            "        ExecuteProcess(",
+            "            cmd=[\"gzclient\"],",
+            "            output=\"screen\",",
+            "        ),",
+        ])
 
     for block in robot_blocks:
         for line in block.splitlines():

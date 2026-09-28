@@ -1,0 +1,34 @@
+# NS-3 standalone speed and realtime-lag grid.
+# `python -m cornet bench ns3 --quick` runs baseline, include, and factorial.
+suite: ns3
+repeats: 3
+# One simulated second. Scenario build finishes in well under a second, and
+# the event rate is steady, so speed factor does not need a 20 s run. On this
+# machine a loaded cell is ~0.014× realtime, which would make 20 s cost about
+# 25 minutes per process.
+sim_time_s: 1
+baseline:
+  sites: 1
+  sectors: 3
+  ues_per_cell: 5
+  traffic: periodic
+  channel_update_ms: 100
+  numerology: 1
+  wraparound: false
+  scheduler: rr
+include:
+  - id: single_cell_pendulum
+    sites: 1
+    sectors: 1
+    ues_per_cell: 1
+sweeps:
+  sites: [1, 7, 19]
+  sectors: [1, 3]
+  ues_per_cell: [0, 5, 10]
+  traffic: [periodic, full_buffer]
+  channel_update_ms: [0, 100]
+  numerology: [1, 3]
+  scheduler: [rr, pf]
+factorial:
+  sites: [1, 7]
+  ues_per_cell: [0, 10]

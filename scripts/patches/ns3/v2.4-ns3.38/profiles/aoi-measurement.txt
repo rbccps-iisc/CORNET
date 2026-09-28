@@ -1,0 +1,4 @@
+# PDCP timestamps plus both schedulers. AoI subclasses EDF, so EDF is applied first.
+ns3_lte_pdcp.patch
+nr_edf_only.patch
+nr_aoi_only.patch

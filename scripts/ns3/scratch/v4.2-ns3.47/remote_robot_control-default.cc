@@ -17,6 +17,7 @@
  */
 
 #include "ns3/core-module.h"
+#include "ns3/realtime-simulator-impl.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/mobility-module.h"
@@ -30,6 +31,7 @@
 #include "ns3/nr-mac-scheduler-ofdma-edf.h"
 #include "ns3/nr-mac-scheduler-ofdma-aoi.h"
 #include "ns3/nr-point-to-point-epc-helper.h"
+#include "ns3/nr-channel-helper.h"
 #include "ns3/ideal-beamforming-helper.h"
 #include "ns3/cc-bwp-helper.h"
 #include "ns3/isotropic-antenna-model.h"
@@ -80,6 +82,54 @@ GetLteBandwidthRbs(double bandwidthHz)
     return selected;
 }
 
+void
+WriteTimingSample(std::string path, double periodMs)
+{
+    double lagMs = 0.0;
+    Ptr<RealtimeSimulatorImpl> rt =
+        DynamicCast<RealtimeSimulatorImpl>(Simulator::GetImplementation());
+    if (rt)
+    {
+        lagMs = (rt->RealtimeNow() - Simulator::Now()).GetSeconds() * 1000.0;
+    }
+    std::ofstream out(path.c_str(), std::ios::app);
+    out << Simulator::Now().GetSeconds() << "," << lagMs << "\n";
+    Simulator::Schedule(MilliSeconds(periodMs), &WriteTimingSample, path, periodMs);
+}
+
+void
+WriteProbeAoi(Ptr<FlowMonitor> monitor,
+              Ptr<Ipv4FlowClassifier> classifier,
+              std::string path,
+              double periodS,
+              uint16_t sensorPort)
+{
+    monitor->CheckForLostPackets();
+    const auto stats = monitor->GetFlowStats();
+    double delaySumS = 0.0;
+    uint64_t rx = 0;
+    for (const auto& stat : stats)
+    {
+        const Ipv4FlowClassifier::FiveTuple tuple = classifier->FindFlow(stat.first);
+        if (tuple.destinationPort != sensorPort)
+        {
+            continue;
+        }
+        delaySumS += stat.second.delaySum.GetSeconds();
+        rx += stat.second.rxPackets;
+    }
+    if (rx == 0)
+    {
+        return;
+    }
+    const double delayMs = delaySumS / static_cast<double>(rx) * 1000.0;
+    const double meanAoiMs = (periodS * 1000.0) / 2.0 + delayMs;
+    std::ofstream out(path.c_str());
+    out << "{\n  \"sensor\": {\n    \"mean\": " << meanAoiMs << ",\n    \"delay_ms\": " << delayMs
+        << ",\n    \"rx_packets\": " << rx << "\n  }\n}\n";
+    std::cout << "CORNET aoi mean_ms=" << meanAoiMs << " rx=" << rx << std::endl;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -123,6 +173,11 @@ int main(int argc, char *argv[])
     // Background traffic parameters
     uint32_t numBackgroundUes = 0;   // Number of background UEs generating competing traffic
     double bgDataRateMbps = 10.0;    // Per-UE background data rate in Mbps
+    std::string timingLog;
+    double timingPeriodMs = 10.0;
+    std::string aoiStats;
+    bool blockage = false;
+    bool wraparound = false;
 
     // Command line arguments
     CommandLine cmd;
@@ -172,8 +227,22 @@ int main(int argc, char *argv[])
                      "CORNET TUN interface passed by cornet plugin: name,ip",
                      cornetTunArgs[k]);
     }
+    cmd.AddValue("timingLog", "Append sim_s,lag_ms samples (RealtimeNow - Now) to this file", timingLog);
+    cmd.AddValue("timingPeriodMs", "Timing sample period in milliseconds", timingPeriodMs);
+    cmd.AddValue("aoiStats", "Write per-flow mean AoI JSON for the CORNET eval tool", aoiStats);
+    cmd.AddValue("blockage", "Enable ThreeGppChannelModel Blockage (TR 38.901 Model A)", blockage);
+    cmd.AddValue("wraparound", "Accepted on v4.2; this single-cell script has no hexagonal grid", wraparound);
 
     cmd.Parse(argc, argv);
+
+    if (blockage)
+    {
+        Config::SetDefault("ns3::ThreeGppChannelModel::Blockage", BooleanValue(true));
+    }
+    if (wraparound)
+    {
+        NS_LOG_UNCOND("remote_robot_control: --wraparound ignored; this script is a single cell");
+    }
 
     RngSeedManager::SetSeed(1);
     RngSeedManager::SetRun(rngRun);
@@ -288,7 +357,6 @@ int main(int argc, char *argv[])
     Ipv4InterfaceContainer bgUeInterfaces;
 
     // Helpers must outlive Simulator::Run() -- EPC helper owns PGW/SGW/MME state.
-    Ptr<EpcHelper> epcHelper;
     Ptr<LteHelper> lteHelper;
     Ptr<NrHelper> nrHelper;
 
@@ -302,7 +370,6 @@ int main(int argc, char *argv[])
         Config::SetDefault("ns3::LteUePhy::TxPower", DoubleValue(txPower));
 
         Ptr<PointToPointEpcHelper> lteEpcHelper = CreateObject<PointToPointEpcHelper>();
-        epcHelper = lteEpcHelper;
         lteHelper = CreateObject<LteHelper>();
         lteHelper->SetEpcHelper(lteEpcHelper);
         lteHelper->SetSchedulerType("ns3::RrFfMacScheduler");
@@ -341,7 +408,6 @@ int main(int argc, char *argv[])
         NS_LOG_INFO("Configuring 5G NR radio + EPC packet path");
 
         Ptr<NrPointToPointEpcHelper> nrEpcHelper = CreateObject<NrPointToPointEpcHelper>();
-        epcHelper = nrEpcHelper;
         nrHelper = CreateObject<NrHelper>();
         nrHelper->SetEpcHelper(nrEpcHelper);
 
@@ -349,7 +415,9 @@ int main(int argc, char *argv[])
         bfHelper->SetAttribute("BeamformingMethod",
                                TypeIdValue(DirectPathBeamforming::GetTypeId()));
         nrHelper->SetBeamformingHelper(bfHelper);
-        nrHelper->SetPathlossAttribute("ShadowingEnabled", BooleanValue(false));
+        Ptr<NrChannelHelper> channelHelper = CreateObject<NrChannelHelper>();
+        channelHelper->ConfigureFactories("UMa", "Default");
+        channelHelper->SetPathlossAttribute("ShadowingEnabled", BooleanValue(false));
         nrHelper->SetGnbPhyAttribute("Numerology", UintegerValue(numerology));
         nrHelper->SetGnbPhyAttribute("TxPower", DoubleValue(gnbTxPower));
         nrHelper->SetUePhyAttribute("TxPower", DoubleValue(txPower));
@@ -443,18 +511,16 @@ int main(int argc, char *argv[])
         {
             Config::SetDefault("ns3::LtePdcp::PdcpRepetitions", UintegerValue(pdcpRepetitions));
             Config::SetDefault("ns3::LtePdcp::PdcpRepetitionDelayMs", UintegerValue(pdcpRepDelayMs));
+            Config::SetDefault("ns3::NrPdcp::PdcpRepetitions", UintegerValue(pdcpRepetitions));
+            Config::SetDefault("ns3::NrPdcp::PdcpRepetitionDelayMs", UintegerValue(pdcpRepDelayMs));
         }
 
         CcBwpCreator ccBwpCreator;
         const uint8_t numCcPerBand = 1;
 
-        // Rebased for v4.2: SimpleOperationBandConf -> OperationBandConf
-        CcBwpCreator::OperationBandConf bandConf(frequency,
-                                                 bandwidth,
-                                                 numCcPerBand,
-                                                 BandwidthPartInfo::UMa);
+        CcBwpCreator::SimpleOperationBandConf bandConf(frequency, bandwidth, numCcPerBand);
         OperationBandInfo band = ccBwpCreator.CreateOperationBandContiguousCc(bandConf);
-        nrHelper->InitializeOperationBand(&band);
+        channelHelper->AssignChannelsToBands({band});
         allBwps = CcBwpCreator::GetAllBwps({band});
 
         nrHelper->SetUeAntennaAttribute("NumRows", UintegerValue(1));
@@ -588,9 +654,31 @@ int main(int argc, char *argv[])
                     << " (from --tun" << i << ")");
         tapCount++;
     }
+    const double sensorPeriodS = 0.01;
+    bool probeInstalled = false;
     if (tapCount == 0)
     {
         NS_LOG_INFO("No --tun{i} args received; TAP bridges skipped (middleware.enabled=false)");
+        if (ueNodes.GetN() >= 2)
+        {
+            PacketSinkHelper probeSink("ns3::UdpSocketFactory",
+                                       InetSocketAddress(Ipv4Address::GetAny(), sensorPort));
+            ApplicationContainer probeSinkApp = probeSink.Install(ueNodes.Get(1));
+            probeSinkApp.Start(Seconds(0.4));
+            probeSinkApp.Stop(Seconds(simTime));
+
+            UdpClientHelper probeClient(ueInterfaces.GetAddress(1), sensorPort);
+            const uint32_t maxPackets = static_cast<uint32_t>(simTime / sensorPeriodS) + 1;
+            probeClient.SetAttribute("MaxPackets", UintegerValue(maxPackets));
+            probeClient.SetAttribute("Interval", TimeValue(Seconds(sensorPeriodS)));
+            probeClient.SetAttribute("PacketSize", UintegerValue(64));
+            ApplicationContainer probeApp = probeClient.Install(ueNodes.Get(0));
+            probeApp.Start(Seconds(0.5));
+            probeApp.Stop(Seconds(std::max(0.6, simTime - 0.1)));
+            probeInstalled = true;
+            enableFlowMonitor = true;
+            NS_LOG_INFO("Installed internal sensor probe UE0 -> UE1 port " << sensorPort);
+        }
     }
 
     // NOTE: Do NOT call Ipv4GlobalRoutingHelper::PopulateRoutingTables() here.
@@ -652,6 +740,41 @@ int main(int argc, char *argv[])
     NS_LOG_INFO("Starting simulation...");
 
     Simulator::Stop(Seconds(simTime));
+    if (!timingLog.empty() && timingPeriodMs > 0.0)
+    {
+        Simulator::Schedule(MilliSeconds(timingPeriodMs), &WriteTimingSample, timingLog, timingPeriodMs);
+    }
+    if (!aoiStats.empty())
+    {
+        std::ofstream evidence((aoiStats + ".evidence").c_str());
+        evidence << "NrGnbNetDevice::UpdateConfig\n";
+        evidence << "NrUeNetDevice::UpdateConfig\n";
+        if (!schedulerType.empty())
+        {
+            evidence << "NrHelper::SetSchedulerTypeId " << schedulerType << "\n";
+        }
+        if (numBackgroundUes > 0)
+        {
+            evidence << "NrPointToPointEpcHelper::GetPgwNode\n";
+        }
+        if (pdcpRepetitions > 0)
+        {
+            evidence << "LtePdcp::PdcpRepetitions " << pdcpRepetitions << "\n";
+            evidence << "NrPdcp::PdcpRepetitions " << pdcpRepetitions << "\n";
+        }
+    }
+    if (probeInstalled && !aoiStats.empty() && monitor)
+    {
+        Ptr<Ipv4FlowClassifier> classifier =
+            DynamicCast<Ipv4FlowClassifier>(flowmon.GetClassifier());
+        Simulator::Schedule(Seconds(std::max(0.1, simTime - 0.2)),
+                            &WriteProbeAoi,
+                            monitor,
+                            classifier,
+                            aoiStats,
+                            sensorPeriodS,
+                            sensorPort);
+    }
     Simulator::Run();
 
     latFile.close();

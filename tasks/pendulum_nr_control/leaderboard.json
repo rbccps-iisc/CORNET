@@ -131,5 +131,138 @@
     "output_dir": "tasks/pendulum_nr_control/results",
     "primary_metric": "mean_aoi_ms",
     "error": "ros2 launch exited early (code 1)"
+  },
+  {
+    "timestamp": "2026-09-26T19:19:04.677931",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-1/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T11:58:55.193410",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "Traceback (most recent call last):\n  File \"/home/acharya/ns-3-dev-v47/ns3\", line 2163, in <module>\n    main()\n  File \"/home/acharya/ns-3-dev-v47/ns3\", line 1897, in main\n    refuse_run_as_root()\n  File \"/home/acharya/ns-3-dev-v47/ns3\", line 1888, in refuse_run_as_root\n    raise Exception(\nException: Refusing to run as root. --enable-sudo will request your password when needed"
+  },
+  {
+    "timestamp": "2026-09-27T11:59:46.195451",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "Invalid command-line argument: --timingLog=tasks/pendulum_nr_control/results/ns3_timing.log\n [Program Options] [General Arguments]\n\nProgram Options:\n    --simTime:              Simulation time in seconds [60]\n    --numUes:               Number of UEs [2]\n    --frequency:            Central frequency in Hz [3.5e+09]\n    --bandwidth:            Bandwidth in Hz [1e+08]\n    --numerology:           NR numerology (0-4) [1]\n    --txPower:              UE transmit power in dBm [23]\n    --gnbTxPower:           Base-station transmit power in dBm [43]\n    --networkPreset:        Network preset label (lte, 5g_nr, 5g_nr_urllc) [5g_nr]\n    --delayMs:              One-way link delay in ms [8]\n    --jitterMs:             Jitter placeholder in ms (for metadata only) [0]\n    --lossRate:             Packet loss probability [0,1] [0]\n    --rngRun:               NS-3 RNG run number for repeated experiments [1]\n    --configuredGrant:      Enable CG-like scheduling (fixed-MCS, min processing delays) [false]\n    --fixedMcsUl:           Use fixed MCS for UL [false]\n    --fixedMcsDl:           Use fixed MCS for DL [false]\n    --startingMcsUl:        Starting MCS for UL (used when fixedMcsUl=true) [12]\n    --startingMcsDl:        Starting MCS for DL (used when fixedMcsDl=true) [4]\n    --n0Delay:              N0 processing delay in slots [0]\n    --n1Delay:              N1 HARQ-ACK delay in slots [2]\n    --n2Delay:              N2 UL data preparation delay in slots [2]\n    --tbDecodeLatencyUs:    TB decode latency in microseconds [100]\n    --symbolsPerSlot:       Symbols per slot (14 or 7 for mini-slots) [14]\n    --tddPattern:           TDD pattern string e.g. F|F|F|F|F|F|F|F|F|F|\n    --schedulerType:        NR scheduler type (rr or edf)\n    --prbRandomAllocation:  Randomize PRB assignment order per slot (frequency diversity) [false]\n    --pdcpRepetitions:      Number of extra PDCP PDU copies (0 = off) [0]\n    --pdcpRepDelayMs:       Delay between successive PDCP copies (ms) [1]\n    --numBackgroundUes:     Number of background UEs generating competing traffic [0]\n    --bgDataRateMbps:       Per-UE background data rate in Mbps [10]\n    --sensorPort:           UDP port for robot sensor data flow (from MiddlewareConfig.sensor_port) [5001]\n    --controlPort:          UDP port for robot control command flow (from MiddlewareConfig.control_port) [5002]\n    --enableTraces:         Enable NR radio traces (writes large .txt files to CWD) [false]\n    --tun0:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun1:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun2:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun3:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun4:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun5:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun6:                 CORNET TUN interface passed by cornet plugin: name,ip\n    --tun7:                 CORNET TUN interface passed by cornet plugin: name,ip\n\nGeneral Arguments:\n    --PrintGlobals:              Print the list of globals.\n    --PrintGroups:               Print the list of groups.\n    --PrintGroup=[group]:        Print all TypeIds of group.\n    --PrintTypeIds:              Print all TypeIds.\n    --PrintAttributes=[typeid]:  Print all attributes of typeid.\n    --PrintVersion:              Print the ns-3 version.\n    --PrintHelp:                 Print this help message."
+  },
+  {
+    "timestamp": "2026-09-27T12:11:36.921078",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "ros2 launch exited early (code 1)"
+  },
+  {
+    "timestamp": "2026-09-27T12:17:53.325115",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "EvalTool returned non-float metric: 'missing analysis/aoi_statistics.json'. Use EvalTool.format_result() to construct the return string."
+  },
+  {
+    "timestamp": "2026-09-27T12:25:01.801585",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms",
+    "error": "EvalTool returned non-float metric: 'missing analysis/aoi_statistics.json'. Use EvalTool.format_result() to construct the return string."
+  },
+  {
+    "timestamp": "2026-09-27T12:28:07.053720",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "FAILURE",
+    "metric": null,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T16:36:29.741209",
+    "variant_id": "pendulum_nr_control@ns3-v47",
+    "status": "SUCCESS",
+    "metric": 7.34113,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T16:37:02.037194",
+    "variant_id": "pendulum_aoi_scheduler@ns3-v47",
+    "status": "SUCCESS",
+    "metric": 7.34269,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T16:37:16.819539",
+    "variant_id": "pendulum_pdcp_repetitions@ns3-v47",
+    "status": "SUCCESS",
+    "metric": 7.34269,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T16:37:33.944245",
+    "variant_id": "pendulum_background_ues@ns3-v47",
+    "status": "SUCCESS",
+    "metric": 7.35682,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T17:43:08.091056",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-15/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-27T17:45:15.926119",
+    "variant_id": "pendulum_nr_control@ns3-v51",
+    "status": "SUCCESS",
+    "metric": 16.5911,
+    "output_dir": "tasks/pendulum_nr_control/results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-28T01:12:36.873672",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-17/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-28T11:44:51.352714",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-21/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
+  },
+  {
+    "timestamp": "2026-09-28T11:45:49.591157",
+    "variant_id": "pendulum_nr_control",
+    "status": "SUCCESS",
+    "metric": 12.0,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-22/test_example_tasks_write_leade0/pendulum_results",
+    "primary_metric": "mean_aoi_ms"
   }
 ]

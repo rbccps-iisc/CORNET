@@ -5,6 +5,10 @@ Subscribes to:
   /clock  (rosgraph_msgs/msg/Clock)   → sends physics time to ClockServer
   /tf     (tf2_msgs/msg/TFMessage)    → sends model positions to PositionServer
 
+Set CORNET_POSITION_SOURCE=model_states to read gazebo_msgs/ModelStates from
+/gazebo/model_states and /cornet/model_states instead of /tf. gazebo_msgs is
+imported only on that path.
+
 This is the ONLY file in the cornet package that imports rclpy.
 Install with:  pip install cornet[ros2]
 """
@@ -65,7 +69,13 @@ def main() -> int:
         def __init__(self) -> None:
             super().__init__("cornet_ros2_bridge")
             self.create_subscription(Clock, "/clock", self._clock_cb, 10)
-            self.create_subscription(TFMessage, "/tf", self._tf_cb, 10)
+            if os.environ.get("CORNET_POSITION_SOURCE") == "model_states":
+                from gazebo_msgs.msg import ModelStates  # noqa: PLC0415
+
+                self.create_subscription(ModelStates, "/gazebo/model_states", self._states_cb, 10)
+                self.create_subscription(ModelStates, "/cornet/model_states", self._states_cb, 10)
+            else:
+                self.create_subscription(TFMessage, "/tf", self._tf_cb, 10)
             self.get_logger().info(
                 "CORNET ROS 2 bridge started (clock=%s pos=%s)",
                 _CLOCK_SOCK,
@@ -78,6 +88,14 @@ def main() -> int:
                 _send_json(clock_sock, {"t": t})
             except OSError as e:
                 self.get_logger().warning(f"Clock socket write error: {e}")
+
+        def _states_cb(self, msg: object) -> None:
+            for name, pose in zip(msg.name, msg.pose):
+                point = pose.position
+                try:
+                    _send_json(pos_sock, {"name": name, "x": point.x, "y": point.y, "z": point.z})
+                except OSError as e:
+                    self.get_logger().warning(f"Position socket write error: {e}")
 
         def _tf_cb(self, msg: "TFMessage") -> None:
             for transform in msg.transforms:

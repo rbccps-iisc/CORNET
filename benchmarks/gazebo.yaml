@@ -1,0 +1,20 @@
+# Gazebo standalone maximum speed and default-rate RTF.
+# Missing warehouse worlds are skipped at run time.
+suite: gazebo
+repeats: 3
+duration_s: 10
+baseline:
+  world: empty
+  robots: 1
+  actors: 0
+  camera: false
+  step_ms: 1
+sweeps:
+  world: [empty, small, large]
+  robots: [1, 4, 8]
+  actors: [0, 10, 30]
+  camera: [false, true]
+  step_ms: [1, 2, 4]
+factorial:
+  robots: [1, 4]
+  actors: [0, 10]

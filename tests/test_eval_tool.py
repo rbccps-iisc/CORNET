@@ -154,3 +154,85 @@ def test_orchestrator_records_valid_metric(tmp_path: Path) -> None:
     lb = json.loads((tmp_path / "leaderboard.json").read_text())
     assert lb[-1]["metric"] == 14.3
     assert lb[-1]["status"] == "SUCCESS"
+
+
+def test_orchestrator_records_failure_detail_without_metric(tmp_path: Path) -> None:
+    """A FAILURE line with a reason on the next line is a leaderboard failure."""
+    import json
+    import textwrap
+    from cornet.config.loader import load_unified
+    from cornet.orchestrator import Orchestrator
+
+    (tmp_path / "config.yaml").write_text(textwrap.dedent("""
+        _schema: unified-v1
+        network:
+          plugin: ns3
+          type: ns3
+          nodes: []
+        robot:
+          plugin: gazebo
+          robots: []
+        experiment:
+          name: missing_aoi
+          duration: 0.0
+          output_dir: tmp/results
+    """).strip())
+    _make_eval_tool_module(tmp_path, "FAILURE,\nmissing analysis/aoi_statistics.json")
+
+    config = load_unified(tmp_path / "config.yaml")
+    Orchestrator()._eval_and_record(config, tmp_path, tmp_path / "results")
+
+    lb = json.loads((tmp_path / "leaderboard.json").read_text())
+    assert lb[-1]["status"] == "FAILURE"
+    assert lb[-1]["metric"] is None
+
+
+def test_pendulum_eval_reads_tracker_statistics(tmp_path: Path) -> None:
+    """The file Ns3Plugin.collect writes is the file the pendulum eval reads."""
+    from cornet.middleware.aoi import AoITracker
+
+    tracker = AoITracker()
+    tracker.record_update("robot->controller", 0.0)
+    tracker.update_physics_time(0.012)
+    tracker.sample()
+    tracker.close()
+    tracker.export_eval_statistics(tmp_path / "analysis" / "aoi_statistics.json")
+
+    _TASKS = Path(__file__).parent.parent / "tasks"
+    tool_cls = _load_eval_tool(_TASKS / "pendulum_nr_control" / "eval" / "eval_tool.py")
+    assert tool_cls().run_evaluation(str(tmp_path)) == "SUCCESS, 12.000000"
+
+
+def test_pendulum_missing_aoi_file_is_leaderboard_failure(tmp_path: Path) -> None:
+    import json
+    import textwrap
+    from cornet.config.loader import load_unified
+    from cornet.orchestrator import Orchestrator
+
+    task = Path(__file__).parent.parent / "tasks" / "pendulum_nr_control"
+    (tmp_path / "config.yaml").write_text(textwrap.dedent("""
+        _schema: unified-v1
+        network:
+          plugin: ns3
+          type: ns3
+          nodes: []
+        robot:
+          plugin: gazebo
+          robots: []
+        experiment:
+          name: pendulum_nr_control
+          duration: 0.0
+          output_dir: results
+    """).strip())
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    (eval_dir / "eval_tool.py").write_text((task / "eval" / "eval_tool.py").read_text())
+    results = tmp_path / "results"
+    results.mkdir()
+
+    config = load_unified(tmp_path / "config.yaml")
+    Orchestrator()._eval_and_record(config, tmp_path, results)
+
+    lb = json.loads((tmp_path / "leaderboard.json").read_text())
+    assert lb[-1]["status"] == "FAILURE"
+    assert lb[-1]["metric"] is None

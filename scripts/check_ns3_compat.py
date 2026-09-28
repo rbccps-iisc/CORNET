@@ -30,8 +30,9 @@ from typing import Literal
 # Version matrix: known-compatible (ns3_version, nr_version) pairs
 # ---------------------------------------------------------------------------
 VERSION_MATRIX: dict[str, str] = {
-    "3.38": "2.4",   # proven — CORNET patches validated here
-    "3.47": "4.2",   # latest — rebased patch set
+    "3.38": "2.4",   # stable default — CORNET patches validated here
+    "3.47": "4.2",   # explicit stepping stone
+    "3.48": "5.1",   # explicit v5.1 lane
 }
 
 # Anchored symbols that MUST exist before CORNET patches can apply cleanly
@@ -290,11 +291,12 @@ def check_patch_dry_run(
 
     # Map patch to its application directory
     # Patches are applied in canonical order: ns3_lte_pdcp (NS-3 root), then nr_*
-    all_passed = True
+    any_fail = False
+    any_warn = False
     for patch_path in patch_files:
         name = patch_path.name
-        # LTE PDCP patch applies to NS-3 root; NR patches apply to contrib/nr
-        if "lte" in name:
+        # ns3_*.patch applies to the NS-3 tree. Other patches apply to contrib/nr.
+        if name.startswith("ns3_"):
             apply_dir = ns3_dir
         else:
             apply_dir = nr_dir
@@ -311,15 +313,35 @@ def check_patch_dry_run(
         )
         if result.returncode == 0:
             details.append(f"PASS {name}")
-        else:
-            all_passed = False
-            stderr = result.stderr.strip()
-            # Extract failing file and hunk info for diagnostic
-            for line in stderr.splitlines():
-                if "patch failed" in line.lower() or "error:" in line.lower():
-                    details.append(f'FAIL(hunk-mismatch: {name}) — {line.strip()}')
+            continue
+        # A finished install already contains the patch. That is a warning, not a
+        # failed rebase: `git apply --check` cannot match context that was edited.
+        reverse = subprocess.run(
+            ["git", "apply", "--reverse", "--check", str(patch_path)],
+            cwd=apply_dir,
+            capture_output=True,
+            text=True,
+        )
+        if reverse.returncode == 0:
+            any_warn = True
+            details.append(f"WARN {name} already applied on this tree")
+            continue
+        any_fail = True
+        stderr = result.stderr.strip()
+        reported = False
+        for line in stderr.splitlines():
+            if "patch failed" in line.lower() or "error:" in line.lower():
+                details.append(f"FAIL(hunk-mismatch: {name}) — {line.strip()}")
+                reported = True
+        if not reported:
+            details.append(f"FAIL(hunk-mismatch: {name})")
 
-    status: CheckStatus = "PASS" if all_passed else "FAIL"
+    if any_fail:
+        status: CheckStatus = "FAIL"
+    elif any_warn:
+        status = "WARN"
+    else:
+        status = "PASS"
     return CheckResult(2, "Patch dry-run", status, details)
 
 

@@ -1,0 +1,30 @@
+name: wifi_ns3
+kind: networks
+version: "1"
+description: NS-3 WiFi with TapBridge. No root. TGax presets are recorded with their document references.
+provides:
+  tgax:
+    - name: residential
+      document: IEEE 802.11-14/0980r16
+      apartment_m: [10, 10, 3]
+      floors: 5
+      apartments_per_floor: [2, 10]
+      ap_height_m: 1.5
+    - name: enterprise
+      document: IEEE 802.11-14/0980r16
+      inter_ap_distance_m: [10, 20]
+    - name: indoor_small_bss
+      document: IEEE 802.11-14/0980r16
+      inter_ap_distance_m: [10, 20]
+    - name: outdoor_large_bss
+      document: IEEE 802.11-14/0980r16
+      inter_ap_distance_m: [100, 200]
+requires:
+  root: false
+compatible:
+  robots: [turtlebot3]
+  worlds: [open_plain, warehouse_small, warehouse_large]
+license:
+  spdx: project-owned
+  vendored: true
+  provenance: CORNET wifi_basic scratch

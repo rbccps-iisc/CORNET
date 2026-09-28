@@ -86,5 +86,45 @@
     "metric": 0.25,
     "output_dir": "/tmp/pytest-of-acharya/pytest-23/test_example_tasks_write_leade0/uav_results",
     "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-09-26T19:19:04.678606",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-1/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-09-27T17:43:08.091657",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-15/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-09-28T01:12:36.874280",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-17/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-09-28T11:44:51.353357",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-21/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
+  },
+  {
+    "timestamp": "2026-09-28T11:45:49.591792",
+    "variant_id": "uav_wifi_control",
+    "status": "SUCCESS",
+    "metric": 0.25,
+    "output_dir": "/tmp/pytest-of-acharya/pytest-22/test_example_tasks_write_leade0/uav_results",
+    "primary_metric": "position_rms"
   }
 ]

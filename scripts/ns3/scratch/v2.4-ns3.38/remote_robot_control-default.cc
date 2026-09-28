@@ -16,6 +16,7 @@
  */
 
 #include "ns3/core-module.h"
+#include "ns3/realtime-simulator-impl.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/mobility-module.h"
@@ -79,6 +80,21 @@ GetLteBandwidthRbs(double bandwidthHz)
     return selected;
 }
 
+void
+WriteTimingSample(std::string path, double periodMs)
+{
+    double lagMs = 0.0;
+    Ptr<RealtimeSimulatorImpl> rt =
+        DynamicCast<RealtimeSimulatorImpl>(Simulator::GetImplementation());
+    if (rt)
+    {
+        lagMs = (rt->RealtimeNow() - Simulator::Now()).GetSeconds() * 1000.0;
+    }
+    std::ofstream out(path.c_str(), std::ios::app);
+    out << Simulator::Now().GetSeconds() << "," << lagMs << "\n";
+    Simulator::Schedule(MilliSeconds(periodMs), &WriteTimingSample, path, periodMs);
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -122,6 +138,10 @@ int main(int argc, char *argv[])
     // Background traffic parameters
     uint32_t numBackgroundUes = 0;   // Number of background UEs generating competing traffic
     double bgDataRateMbps = 10.0;    // Per-UE background data rate in Mbps
+    std::string timingLog;
+    double timingPeriodMs = 10.0;
+    bool blockage = false;
+    bool wraparound = false;
 
     // Command line arguments
     CommandLine cmd;
@@ -154,6 +174,10 @@ int main(int argc, char *argv[])
     cmd.AddValue("pdcpRepDelayMs", "Delay between successive PDCP copies (ms)", pdcpRepDelayMs);
     cmd.AddValue("numBackgroundUes", "Number of background UEs generating competing traffic", numBackgroundUes);
     cmd.AddValue("bgDataRateMbps", "Per-UE background data rate in Mbps", bgDataRateMbps);
+    cmd.AddValue("timingLog", "Append sim_s,lag_ms samples (RealtimeNow - Now) to this file", timingLog);
+    cmd.AddValue("timingPeriodMs", "Timing sample period in milliseconds", timingPeriodMs);
+    cmd.AddValue("blockage", "Enable ThreeGppChannelModel Blockage (TR 38.901 Model A)", blockage);
+    cmd.AddValue("wraparound", "Rejected on v2.4: hex_wraparound is not in this lane", wraparound);
     // CORNET middleware port parameters (design D16) — forwarded from MiddlewareConfig schema fields
     cmd.AddValue("sensorPort",  "UDP port for robot sensor data flow (from MiddlewareConfig.sensor_port)",  sensorPort);
     cmd.AddValue("controlPort", "UDP port for robot control command flow (from MiddlewareConfig.control_port)", controlPort);
@@ -173,6 +197,15 @@ int main(int argc, char *argv[])
     }
 
     cmd.Parse(argc, argv);
+
+    if (wraparound)
+    {
+        NS_FATAL_ERROR("hex_wraparound is not available on v2.4-ns3.38");
+    }
+    if (blockage)
+    {
+        Config::SetDefault("ns3::ThreeGppChannelModel::Blockage", BooleanValue(true));
+    }
 
     RngSeedManager::SetSeed(1);
     RngSeedManager::SetRun(rngRun);
@@ -645,6 +678,10 @@ int main(int argc, char *argv[])
     NS_LOG_INFO("Starting simulation...");
 
     Simulator::Stop(Seconds(simTime));
+    if (!timingLog.empty() && timingPeriodMs > 0.0)
+    {
+        Simulator::Schedule(MilliSeconds(timingPeriodMs), &WriteTimingSample, timingLog, timingPeriodMs);
+    }
     Simulator::Run();
 
     latFile.close();

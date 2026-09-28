@@ -37,16 +37,36 @@
  */
 
 #include "ns3/core-module.h"
+#include "ns3/realtime-simulator-impl.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/mobility-module.h"
 #include "ns3/tap-bridge-module.h"
+#include <fstream>
 #include <string>
 #include <vector>
 
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("CornetScriptTemplate");
+
+namespace
+{
+void
+WriteTimingSample(std::string path, double periodMs)
+{
+    double lagMs = 0.0;
+    Ptr<RealtimeSimulatorImpl> rt =
+        DynamicCast<RealtimeSimulatorImpl>(Simulator::GetImplementation());
+    if (rt)
+    {
+        lagMs = (rt->RealtimeNow() - Simulator::Now()).GetSeconds() * 1000.0;
+    }
+    std::ofstream out(path.c_str(), std::ios::app);
+    out << Simulator::Now().GetSeconds() << "," << lagMs << "\n";
+    Simulator::Schedule(MilliSeconds(periodMs), &WriteTimingSample, path, periodMs);
+}
+} // namespace
 
 int main(int argc, char *argv[])
 {
@@ -59,6 +79,9 @@ int main(int argc, char *argv[])
     // Defaults match MiddlewareConfig.sensor_port / control_port defaults.
     uint16_t sensorPort  = 5001;
     uint16_t controlPort = 5002;
+    std::string timingLog;
+    double timingPeriodMs = 10.0;
+    bool blockage = false;
 
     // ── CORNET virtual-port contract args (design D14/D15) ───────────────────
     // The CORNET plugin passes --tun{i}=name,ip for each entry in ip_list.
@@ -71,6 +94,9 @@ int main(int argc, char *argv[])
     cmd.AddValue("simTime",      "Simulation duration in seconds",      simTime);
     cmd.AddValue("sensorPort",   "UDP port for robot sensor data flow",  sensorPort);
     cmd.AddValue("controlPort",  "UDP port for robot control commands",  controlPort);
+    cmd.AddValue("timingLog", "Append sim_s,lag_ms samples (RealtimeNow - Now) to this file", timingLog);
+    cmd.AddValue("timingPeriodMs", "Timing sample period in milliseconds", timingPeriodMs);
+    cmd.AddValue("blockage", "Enable ThreeGppChannelModel Blockage (TR 38.901 Model A)", blockage);
 
     // Register --tun{i} args — MUST be done before cmd.Parse()
     for (uint32_t k = 0; k < CORNET_MAX_TUNS; k++)
@@ -81,6 +107,11 @@ int main(int argc, char *argv[])
     }
 
     cmd.Parse(argc, argv);
+
+    if (blockage)
+    {
+        Config::SetDefault("ns3::ThreeGppChannelModel::Blockage", BooleanValue(true));
+    }
 
     GlobalValue::Bind("SimulatorImplementationType", StringValue("ns3::RealtimeSimulatorImpl"));
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
@@ -144,6 +175,10 @@ int main(int argc, char *argv[])
 
     NS_LOG_INFO("Starting simulation...");
     Simulator::Stop(Seconds(simTime));
+    if (!timingLog.empty() && timingPeriodMs > 0.0)
+    {
+        Simulator::Schedule(MilliSeconds(timingPeriodMs), &WriteTimingSample, timingLog, timingPeriodMs);
+    }
     Simulator::Run();
     Simulator::Destroy();
     NS_LOG_INFO("Simulation completed");

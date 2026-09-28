@@ -1,0 +1,39 @@
+name: px4_x500
+kind: robots
+version: "1"
+description: PX4 x500 on Gazebo Classic SITL. PX4's own SITL lockstep is independent of the deferred CORNET conductor.
+provides:
+  metric: position_rms
+requires:
+  gazebo: classic-11
+  ros: humble
+  root: false
+compatible:
+  worlds: [open_plain, warehouse_small]
+  networks: [nr]
+license:
+  spdx: BSD-3-Clause
+  vendored: false
+  provenance: PX4-Autopilot gazebo-classic SITL, pinned at apply time
+  source_url: https://github.com/PX4/PX4-Autopilot
+network_flows:
+  - name: mavlink_setpoint
+    direction: controller_to_robot
+    topic: mavlink
+    rate_hz: 50
+    size_bytes: 64
+  - name: mavlink_telemetry
+    direction: robot_to_controller
+    topic: mavlink
+    rate_hz: 10
+    size_bytes: 128
+physics_step_s: 0.004
+count_min: 1
+count_max: 1
+intake_questions:
+  - localisation (GPS, external pose, optical flow, or VIO)
+  - control split (onboard mission or offboard over the network)
+  - flight envelope (ceiling, max speed, aisle clearance)
+  - mission (hover, aisle scan, follow ground robot)
+  - link-loss policy (hold or land; RTL is rejected indoors)
+notes: Indoor flight requires the no-roof world variant. RTL indoors is rejected.

@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +23,96 @@ if TYPE_CHECKING:
     from cornet.context import ExperimentContext
 
 logger = logging.getLogger(__name__)
+
+# Scratch scripts in this repository that accept --timingLog / --timingPeriodMs.
+_TIMING_SCRIPTS = {
+    "remote_robot_control-default",
+    "scratch_template-default",
+    "bench_nr_multicell-default",
+}
+
+
+def nodes_payload(previous: dict, current: dict, dt: float) -> dict:
+    """Constant-velocity snapshot. The first sample for a name has zero velocity."""
+    step = dt if dt > 0 else 1.0
+    nodes = {}
+    for name, pos in current.items():
+        prev = previous.get(name)
+        if prev is None:
+            vx = vy = vz = 0.0
+        else:
+            vx = (float(pos["x"]) - float(prev["x"])) / step
+            vy = (float(pos["y"]) - float(prev["y"])) / step
+            vz = (float(pos["z"]) - float(prev["z"])) / step
+        nodes[name] = [float(pos["x"]), float(pos["y"]), float(pos["z"]), vx, vy, vz]
+    return {"nodes": nodes}
+
+
+def script_supports_timing(script: str) -> bool:
+    """True when *script* is a bundled CORNET scratch program."""
+    name = Path(script).name
+    if name.endswith(".cc"):
+        name = name[:-3]
+    if name in _TIMING_SCRIPTS:
+        return True
+    # ns-3's runnable shortcut drops the CORNET "-default" profile suffix.
+    return f"{name}-default" in _TIMING_SCRIPTS
+
+
+def _scratch_lane(ns3_dir: Path | None) -> str:
+    """Patch-set directory that matches the installed NS-3 tree."""
+    if ns3_dir is not None:
+        nr = ns3_dir / "contrib" / "nr"
+        if (nr / ".cornet-patched-v5.1").is_file():
+            return "v5.1-ns3.48"
+        if (nr / ".cornet-patched-v4.2").is_file():
+            return "v4.2-ns3.47"
+        if (nr / ".cornet-patched-v2.4").is_file():
+            return "v2.4-ns3.38"
+    return "v2.4-ns3.38"
+
+
+def bundled_script_source(script: str, ns3_dir: Path | None = None) -> Path | None:
+    """Return the repository ``.cc`` for a bundled script name, if it exists."""
+    name = Path(script).name
+    stem = name[:-3] if name.endswith(".cc") else name
+    if stem not in _TIMING_SCRIPTS:
+        return None
+    root = Path(__file__).resolve().parents[3]
+    lane = _scratch_lane(ns3_dir)
+    candidates = [
+        root / "scripts" / "ns3" / "scratch" / lane / f"{stem}.cc",
+        root / "scripts" / "ns3" / "scratch" / "v2.4-ns3.38" / f"{stem}.cc",
+        root / "scripts" / "ns3" / "scratch" / f"{stem}.cc",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def install_bundled_script(ns3_dir: Path, script: str) -> str:
+    """Copy a bundled script into the NS-3 scratch directory and return its run target.
+
+    ``./ns3 run`` only resolves programs inside that tree, not arbitrary ``.cc`` paths.
+    """
+    source = bundled_script_source(script, ns3_dir)
+    if source is None or ns3_dir is None:
+        return script
+    dest_dir = ns3_dir / "scratch"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / source.name
+    if not dest.is_file() or dest.read_bytes() != source.read_bytes():
+        shutil.copy2(source, dest)
+        # copy2 keeps the source mtime. An older source would not rebuild.
+        os.utime(dest, None)
+    # Filename suffix "-default" is the CORNET profile tag. ns-3 also appends
+    # "-<build-profile>" and then strips every "-default", so the runnable
+    # shortcut is the stem without that suffix.
+    stem = source.stem
+    if stem.endswith("-default"):
+        stem = stem[: -len("-default")]
+    return stem
 
 
 class PluginConfigError(RuntimeError):
@@ -73,6 +166,9 @@ class Ns3Plugin(Plugin):
         self._tun_manager = None
         self._clock_server = None
         self._pos_server = None
+        self._positions_socket: str | None = None
+        self._forward_stop = threading.Event()
+        self._forward_thread: threading.Thread | None = None
         self._dispatcher = None
         self._aoi_tracker = None
 
@@ -104,6 +200,38 @@ class Ns3Plugin(Plugin):
                 )
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    def _ensure_mobility_positions(self, net) -> None:
+        """Start a PositionServer for mobile scenarios even when middleware is off."""
+        mob = getattr(net, "mobility", None)
+        if not mob or not mob.enabled or self._pos_server is not None:
+            return
+        from cornet.middleware.clock import PositionServer
+
+        mw = getattr(net, "middleware", None)
+        path = mw.positions_socket if mw else "/tmp/cornet_positions.sock"
+        self._positions_socket = path
+        self._pos_server = PositionServer(socket_path=path)
+
+    def _start_position_forwarder(self, update_hz: float) -> None:
+        """Publish constant-velocity snapshots at ``network.mobility.update_hz``."""
+        period = 1.0 / update_hz if update_hz and update_hz > 0 else 0.1
+        self._forward_stop.clear()
+
+        def loop() -> None:
+            previous: dict = {}
+            previous_t = time.monotonic()
+            while not self._forward_stop.wait(period):
+                now = time.monotonic()
+                current = self._pos_server.all_positions() if self._pos_server else {}
+                payload = nodes_payload(previous, current, now - previous_t)
+                previous = current
+                previous_t = now
+                if payload["nodes"] and self._pos_server is not None:
+                    self._pos_server.broadcast(payload)
+
+        self._forward_thread = threading.Thread(target=loop, name="cornet-position-forwarder", daemon=True)
+        self._forward_thread.start()
 
     def configure(self, config: "UnifiedConfig", context: "ExperimentContext") -> None:
         self._config = config
@@ -144,6 +272,7 @@ class Ns3Plugin(Plugin):
                 on_tick=self._on_clock_tick,
             )
             self._pos_server = PositionServer(socket_path=mw.positions_socket)
+            self._positions_socket = mw.positions_socket
             self._dispatcher = PacketDispatcher(
                 rtf=mw.rtf,
                 deadline_s=mw.deadline_s,
@@ -152,7 +281,42 @@ class Ns3Plugin(Plugin):
             )
             self._aoi_tracker = AoITracker()
 
+        self._ensure_mobility_positions(net)
         self._validate_scenario(sc)
+
+    def _guard_lane_flags(self, ns3_dir: Path, extra: dict) -> None:
+        """Reject flags the installed lane cannot provide before NS-3 starts."""
+        from cornet.capabilities import capability_level, installed_patch_set
+
+        lane = installed_patch_set(ns3_dir) or "unknown"
+        wrap = str(extra.get("wraparound", "")).lower()
+        if wrap in {"1", "true", "yes"} and capability_level("hex_wraparound", lane) is None:
+            logger.error(
+                "hex_wraparound is not available on %s. --wraparound=true requires a lane "
+                "that lists hex_wraparound (v4.2-ns3.47 or v5.1-ns3.48).",
+                lane,
+            )
+            sys.exit(1)
+        block = str(extra.get("blockage", "")).lower()
+        if block in {"1", "true", "yes"} and capability_level("blockage_model_a", lane) is None:
+            logger.error(
+                "blockage_model_a is not available on %s. --blockage=true requires that capability.",
+                lane,
+            )
+            sys.exit(1)
+
+    def _write_aerial_provenance(self, cfg, extra: dict) -> None:
+        aerial = {"UMa-AV", "UMi-AV", "RMa-AV"}
+        used = [str(value) for value in extra.values() if str(value) in aerial]
+        if not used:
+            return
+        path = Path(cfg.experiment.output_dir).resolve() / "provenance.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '{"caveat": "aerial path loss only", "scenarios": ['
+            + ", ".join(f'"{name}"' for name in used)
+            + "]}\n"
+        )
 
     def start(self) -> None:
         cfg = self._config
@@ -180,12 +344,27 @@ class Ns3Plugin(Plugin):
             logger.warning("No 'simulation_script' in network config; skipping NS-3 launch")
             return
 
+        # NS-3 only runs scratch programs that live in its own tree.
+        script = install_bundled_script(ns3_dir, str(script))
+
         # ── Build NS-3 command ────────────────────────────────────────
         args = [str(ns3_dir / "ns3"), "run", script, "--"]
         for key, val in extra.items():
-            if key == "simulation_script":
+            if key in {"simulation_script", "timing_log"}:
                 continue
             args.append(f"--{key}={val}")
+
+        forward_timing = script_supports_timing(script) or bool(getattr(cfg.network, "timing_log", False))
+        if forward_timing:
+            log_path = Path(cfg.experiment.output_dir).resolve() / "ns3_timing.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            args.append(f"--timingLog={log_path}")
+            args.append("--timingPeriodMs=10")
+        lane = _scratch_lane(ns3_dir)
+        if lane in {"v4.2-ns3.47", "v5.1-ns3.48"} and script_supports_timing(script):
+            stats_path = Path(cfg.experiment.output_dir).resolve() / "analysis" / "aoi_statistics.json"
+            stats_path.parent.mkdir(parents=True, exist_ok=True)
+            args.append(f"--aoiStats={stats_path}")
 
         # Forward scenario parameters as CLI args
         if sc is not None:
@@ -204,6 +383,12 @@ class Ns3Plugin(Plugin):
         if mw and mw.enabled:
             args.append(f"--sensorPort={mw.sensor_port}")
             args.append(f"--controlPort={mw.control_port}")
+            args.append(f"--positionsSocket={mw.positions_socket}")
+        elif cfg.network.mobility and cfg.network.mobility.enabled and self._positions_socket:
+            args.append(f"--positionsSocket={self._positions_socket}")
+
+        self._guard_lane_flags(ns3_dir, extra)
+        self._write_aerial_provenance(cfg, extra)
 
         logger.info("Launching NS-3: %s", " ".join(args))
         try:
@@ -231,6 +416,12 @@ class Ns3Plugin(Plugin):
             self._clock_server.start()
             self._pos_server.start()
             self._dispatcher.start()
+        elif self._pos_server is not None:
+            self._pos_server.start()
+
+        mob = cfg.network.mobility
+        if mob and mob.enabled and self._pos_server is not None:
+            self._start_position_forwarder(mob.update_hz)
 
         # Populate node IPs from TUN map or fallback stubs
         tun_ips = list(tun_map.values())
@@ -255,6 +446,10 @@ class Ns3Plugin(Plugin):
                     proc.kill()
                 setattr(self, proc_attr, None)
 
+        self._forward_stop.set()
+        if self._forward_thread is not None:
+            self._forward_thread.join(timeout=2.0)
+            self._forward_thread = None
         if self._clock_server is not None:
             self._clock_server.stop()
         if self._pos_server is not None:
@@ -268,6 +463,7 @@ class Ns3Plugin(Plugin):
         if self._aoi_tracker is not None:
             self._aoi_tracker.close()
             self._aoi_tracker.export_json(output_dir / "aoi_summary.json")
+            self._aoi_tracker.export_eval_statistics(output_dir / "analysis" / "aoi_statistics.json")
             logger.info("AoI summary written to %s", output_dir / "aoi_summary.json")
 
 

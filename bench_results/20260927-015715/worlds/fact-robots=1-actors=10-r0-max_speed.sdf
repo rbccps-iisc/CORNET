@@ -1,0 +1,145 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="cornet_bench">
+    <physics name="default_physics" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_update_rate>0</real_time_update_rate>
+    </physics>
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    <include><uri>model://turtlebot3_burger</uri><name>robot0</name><pose>0.0 0.0 0 0 0 0</pose></include>
+    <actor name="walker0">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-2.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>2.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker1">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-3.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>1.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker2">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-4.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>0.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker3">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-5.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-1.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker4">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-6.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-2.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker5">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-7.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-3.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker6">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-8.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-4.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker7">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-9.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-5.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker8">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-10.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-6.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+
+    <actor name="walker9">
+      <skin><filename>walk.dae</filename><scale>1.0</scale></skin>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>-11.0 -2 1 0 0 0</pose></waypoint>
+          <waypoint><time>8</time><pose>-7.0 -2 1 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+    
+  </world>
+</sdf>

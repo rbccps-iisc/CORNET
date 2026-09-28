@@ -1,0 +1,27 @@
+---
+description: Plugin lifecycle, unified task config, and EvalTool contract
+alwaysApply: true
+---
+
+# Plugins and tasks
+
+Every `tasks/<name>/config.yaml` starts with `_schema: unified-v1` and includes `network`, `robot`, and `experiment`.
+
+Lifecycle order: `configure` → `start` → `run` → `stop` → `collect`. `configure` must not start processes. `stop` always runs and must be idempotent. The orchestrator stops already-started plugins in reverse order if a later phase raises.
+
+Built-ins: network `ns3` and `mininet`; robot `gazebo`. Register at import time:
+
+```python
+from cornet.plugins import register
+register("my-net", MyPlugin)
+```
+
+Add the module to `_BUILTIN` in `cornet/plugins/__init__.py` when it should load with the package.
+
+`network.simulation_script` is the NS-3 shortcut, with every `-default` stripped. Extra flat keys under `network:` are forwarded as `--key=val`. Use `network.scenario.profile` when a bundled scenario template fits.
+
+Eval tools live at `tasks/<name>/eval/eval_tool.py` and subclass `cornet.eval.base.EvalTool`. The first line of `run_evaluation` comes from `EvalTool.format_result` (`SUCCESS, <finite float>`) or is `FAILURE,`.
+
+Log with `logger = logging.getLogger(__name__)`.
+
+Parallel sweeps set `ROS_DOMAIN_ID` to the base plus the variant index (maximum 101) and `GAZEBO_MASTER_URI` to port `11345 + index`.

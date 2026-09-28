@@ -35,6 +35,14 @@ def _has_cap_net_admin() -> bool:
     return False
 
 
+def catalog_leaderboard_fields(config: UnifiedConfig) -> dict:
+    """Copy ``catalog.standard`` onto a leaderboard entry when the run was compiled."""
+    catalog = getattr(config, "catalog", None)
+    if catalog is None:
+        return {}
+    return {"standard": catalog.standard}
+
+
 class Orchestrator:
     """Drives the full CORNET experiment lifecycle.
 
@@ -54,6 +62,9 @@ class Orchestrator:
     ) -> None:
         """Run an experiment from a task directory or explicit config path."""
         config, resolved_task_dir = self._resolve_config(task_dir, config_path)
+        from cornet.capabilities import enforce_declared_capabilities
+
+        enforce_declared_capabilities(config)
         self._cleanup_stale_launch_files(resolved_task_dir)
 
         # Sweep expansion
@@ -105,6 +116,10 @@ class Orchestrator:
         # so that every downstream consumer (context, leaderboard, logs) sees the tag.
         # Controlled by CORNET_NS3_TAG env var (e.g. "ns3-v24"). No-op when unset.
         ns3_tag = os.environ.get("CORNET_NS3_TAG")
+        if not ns3_tag and config.network.plugin in {"ns3", "ns3+mininet"}:
+            from cornet.capabilities import detected_lane_tag
+
+            ns3_tag = detected_lane_tag()
         if ns3_tag:
             config.experiment.name = f"{config.experiment.name}@{ns3_tag}"
 
@@ -115,11 +130,23 @@ class Orchestrator:
         # Auto-discover launch.py and world.sdf from task dir
         if task_dir is not None:
             self._auto_discover(config, task_dir)
+            self._resolve_robot_assets(config, task_dir)
 
         # Preflight check
         self._preflight(config)
 
         plugins = self._load_plugins(config)
+
+        from cornet.telemetry import TelemetrySession
+
+        timing = config.experiment.timing
+        telemetry = TelemetrySession(
+            output_dir,
+            gazebo_active=config.robot.plugin == "gazebo",
+            rtf_min=timing.rtf_min,
+            lag_budget_ms=timing.lag_budget_ms,
+            ns3_timing_log=output_dir / "ns3_timing.log",
+        )
 
         started: list[Plugin] = []
         lifecycle_error: Exception | None = None
@@ -131,12 +158,18 @@ class Orchestrator:
                 started.append(p)
 
             logger.info("Running experiment '%s' for %.1f s …", config.experiment.name, config.experiment.duration)
+            telemetry.start()
             self._run_plugins(plugins, config.experiment.duration)
 
         except Exception as exc:
             logger.exception("Error during experiment run")
             lifecycle_error = exc
         finally:
+            if telemetry.started:
+                try:
+                    telemetry.stop()
+                except Exception:
+                    logger.exception("Error writing timing.json")
             # Stop in reverse order
             for p in reversed(started):
                 try:
@@ -160,6 +193,7 @@ class Orchestrator:
                         "output_dir": str(output_dir),
                         "primary_metric": config.experiment.primary_metric,
                         "error": str(lifecycle_error),
+                        **catalog_leaderboard_fields(config),
                     },
                 )
             raise lifecycle_error
@@ -192,6 +226,7 @@ class Orchestrator:
                         "output_dir": str(output_dir),
                         "primary_metric": config.experiment.primary_metric,
                         "error": str(exc),
+                        **catalog_leaderboard_fields(config),
                     },
                 )
 
@@ -237,6 +272,26 @@ class Orchestrator:
             if (task_dir / "world.sdf").exists():
                 config.robot.world = str(task_dir / "world.sdf")
                 logger.debug("Auto-discovered world: %s", config.robot.world)
+
+    def _resolve_robot_assets(self, config: UnifiedConfig, task_dir: Path) -> None:
+        """Turn task-relative world and model paths into absolute paths."""
+        robot = config.robot
+        if robot is None:
+            return
+        if robot.world:
+            robot.world = str(self._task_asset(task_dir, robot.world))
+        for entry in robot.robots:
+            entry.model.path = str(self._task_asset(task_dir, entry.model.path))
+
+    @staticmethod
+    def _task_asset(task_dir: Path, path_value: str) -> Path:
+        path = Path(path_value)
+        if path.is_absolute():
+            return path
+        in_task = (task_dir / path).resolve()
+        if in_task.is_file():
+            return in_task
+        return path.resolve()
 
     def _preflight(self, config: UnifiedConfig) -> None:
         """Abort early if required privileges or capabilities are missing."""
@@ -300,22 +355,26 @@ class Orchestrator:
         eval_tool = mod.EvalTool()
         result_str = eval_tool.run_evaluation(str(output_dir))
 
-        parts = result_str.strip().split(",", 1)
+        first_line = result_str.strip().splitlines()[0] if result_str.strip() else ""
+        parts = first_line.split(",", 1)
         status = parts[0].strip()
         metric_str = parts[1].strip() if len(parts) > 1 else ""
 
-        try:
-            metric = float(metric_str)
-        except ValueError:
-            raise ValueError(
-                f"EvalTool returned non-float metric: {metric_str!r}. "
-                "Use EvalTool.format_result() to construct the return string."
-            )
-        if not math.isfinite(metric):
-            raise ValueError(
-                f"EvalTool returned non-finite metric: {metric_str!r} (got {metric}). "
-                "Use EvalTool.format_result() to construct the return string."
-            )
+        if status == "FAILURE" and metric_str == "":
+            metric = None
+        else:
+            try:
+                metric = float(metric_str)
+            except ValueError:
+                raise ValueError(
+                    f"EvalTool returned non-float metric: {metric_str!r}. "
+                    "Use EvalTool.format_result() to construct the return string."
+                )
+            if not math.isfinite(metric):
+                raise ValueError(
+                    f"EvalTool returned non-finite metric: {metric_str!r} (got {metric}). "
+                    "Use EvalTool.format_result() to construct the return string."
+                )
 
         from cornet.leaderboard.writer import append_entry
         import datetime
@@ -328,6 +387,7 @@ class Orchestrator:
                 "metric": metric,
                 "output_dir": str(output_dir),
                 "primary_metric": config.experiment.primary_metric,
+                **catalog_leaderboard_fields(config),
             },
         )
         logger.info("Leaderboard entry written: %s, metric=%s", status, metric)

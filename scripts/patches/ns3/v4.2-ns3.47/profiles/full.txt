@@ -1,0 +1,4 @@
+# Default: every CORNET patch for this lane.
+ns3_lte_pdcp.patch
+nr_pdcp_aoi.patch
+nr_schedulers.patch

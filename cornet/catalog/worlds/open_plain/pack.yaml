@@ -1,0 +1,48 @@
+name: open_plain
+kind: worlds
+version: "1"
+description: Empty outdoor ground plane.
+provides: {}
+requires:
+  gazebo: classic-11
+compatible:
+  robots: [pendulum, turtlebot3, px4_x500]
+  networks: [nr, lte, wifi_ns3]
+license:
+  spdx: project-owned
+  vendored: true
+  provenance: generated ground plane
+bounds:
+  x_min: -50
+  x_max: 50
+  y_min: -50
+  y_max: 50
+origin:
+  x: 0
+  y: 0
+  z: 0
+spawn_slots:
+  - name: origin
+    x: 0
+    y: 0
+    z: 0
+zones:
+  - name: open_floor
+    x_min: -20
+    x_max: 20
+    y_min: -20
+    y_max: 20
+supported_deployments:
+  - single_cell
+  - 3gpp_umi
+  - 3gpp_uma
+  - 3gpp_rma
+  - custom
+supported_anchors:
+  - centre_site
+  - cell_edge_0_1
+  - sector_boundary
+  - crossing
+indoor_of: []
+model_paths: []
+roof: false

@@ -1,0 +1,80 @@
+# Representative co-simulation classes. Each entry is run with Gazebo and
+# the NS-3 benchmark script together. pin_cpu and tap add variants.
+# TAP variants are skipped when CAP_NET_ADMIN is missing.
+suite: combined
+repeats: 3
+duration_s: 15
+sim_time_s: 15
+scenarios:
+  - name: single_cell_pendulum
+    ns3:
+      sites: 1
+      sectors: 1
+      ues_per_cell: 1
+      traffic: periodic
+      channel_update_ms: 100
+      numerology: 1
+      wraparound: false
+      scheduler: rr
+    gazebo:
+      world: empty
+      robots: 1
+      actors: 0
+      camera: false
+      step_ms: 1
+    pin_cpu: [false, true]
+    tap: [false, true]
+  - name: small_warehouse_4tb_10walkers
+    ns3:
+      sites: 1
+      sectors: 1
+      ues_per_cell: 10
+      traffic: periodic
+      channel_update_ms: 100
+      numerology: 1
+      wraparound: false
+      scheduler: rr
+    gazebo:
+      world: small
+      robots: 4
+      actors: 10
+      camera: false
+      step_ms: 2
+    pin_cpu: [false]
+    tap: [false, true]
+  - name: large_warehouse_4tb_30walkers_21cells
+    ns3:
+      sites: 7
+      sectors: 3
+      ues_per_cell: 5
+      traffic: both
+      channel_update_ms: 100
+      numerology: 1
+      wraparound: false
+      scheduler: rr
+    gazebo:
+      world: large
+      robots: 4
+      actors: 30
+      camera: false
+      step_ms: 2
+    pin_cpu: [false]
+    tap: [false]
+  - name: eight_robots_57cells
+    ns3:
+      sites: 19
+      sectors: 3
+      ues_per_cell: 5
+      traffic: both
+      channel_update_ms: 100
+      numerology: 1
+      wraparound: false
+      scheduler: rr
+    gazebo:
+      world: large
+      robots: 8
+      actors: 10
+      camera: false
+      step_ms: 4
+    pin_cpu: [false, true]
+    tap: [false]

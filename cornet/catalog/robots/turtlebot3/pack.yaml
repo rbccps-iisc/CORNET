@@ -1,0 +1,38 @@
+name: turtlebot3
+kind: robots
+version: "1"
+description: Namespaced TurtleBot3 Burger. cmd_vel, odom, and scan cross the network.
+provides:
+  metric: position_rms
+requires:
+  gazebo: classic-11
+  ros: humble
+  packages: [ros-humble-turtlebot3]
+  root: false
+compatible:
+  worlds: [open_plain, warehouse_small, warehouse_large]
+  networks: [nr, lte, wifi_ns3]
+license:
+  spdx: Apache-2.0
+  vendored: false
+  provenance: ROS 2 Humble turtlebot3 packages, installed separately
+  source_url: https://github.com/ROBOTIS-GIT/turtlebot3
+network_flows:
+  - name: cmd_vel
+    direction: controller_to_robot
+    topic: /cmd_vel
+    rate_hz: 20
+    size_bytes: 64
+  - name: odom
+    direction: robot_to_controller
+    topic: /odom
+    rate_hz: 20
+    size_bytes: 256
+  - name: scan
+    direction: robot_to_controller
+    topic: /scan
+    rate_hz: 5
+    size_bytes: 1024
+physics_step_s: 0.004
+count_min: 1
+count_max: 8

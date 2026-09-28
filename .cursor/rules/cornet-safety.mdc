@@ -1,0 +1,21 @@
+---
+description: Root, TUN, and host-routing constraints for CORNET network runs
+alwaysApply: true
+---
+
+# Network safety
+
+`mininet` and `ns3+mininet` abort unless the process is root. Tell the user and wait. Leave those runs in the foreground.
+
+NS-3 with `network.middleware.enabled: true` creates TUN devices and needs `CAP_NET_ADMIN`. The orchestrator exits without it. The two ways to grant it:
+
+```bash
+sudo python -m cornet tasks/<name>
+sudo setcap cap_net_admin+ep $(which python3)
+```
+
+`cornet.middleware.tun.TunManager` installs `ip rule` and `ip route` entries for interfaces named `cornet0`, `cornet1`, and so on. That mutates host networking. Prefer a VM or `scripts/docker/`. Keep `teardown()` idempotent.
+
+Default middleware endpoints: clock socket `/tmp/cornet_clock.sock` with JSON `{"t": <seconds>}`, positions socket `/tmp/cornet_positions.sock`, sensor UDP `5001`, control UDP `5002`.
+
+`make test` is the ordinary check. Mininet and NS-3 experiments stay out of that loop.

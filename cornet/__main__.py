@@ -37,6 +37,31 @@ def main() -> None:
         help="Port to bind to (default: random free port)",
     )
 
+    bench_parser = subparsers.add_parser(
+        "bench",
+        help="Run NS-3 / Gazebo co-simulation load benchmarks",
+    )
+    bench_parser.add_argument(
+        "suite",
+        choices=["ns3", "gazebo", "combined", "all"],
+        help="Benchmark suite to run",
+    )
+    bench_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned runs without starting a simulator",
+    )
+    bench_parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Run the baseline and factorial core only",
+    )
+    bench_parser.add_argument(
+        "--results",
+        default=None,
+        help="Directory for CSV, plots and summary (default: bench_results/<timestamp>)",
+    )
+
     # Allow bare positional: `python -m cornet tasks/foo` treated as run
     parser.add_argument("_task_positional", nargs="?", help=argparse.SUPPRESS)
 
@@ -53,6 +78,18 @@ def main() -> None:
 
     elif args.command == "ui":
         _run_ui(args.task, port=args.port)
+
+    elif args.command == "bench":
+        from pathlib import Path
+
+        from cornet.bench.runner import execute
+
+        execute(
+            args.suite,
+            quick=args.quick,
+            dry_run=args.dry_run,
+            results=Path(args.results) if args.results else None,
+        )
 
     elif args._task_positional:
         # bare positional: treat as run

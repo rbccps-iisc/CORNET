@@ -1,0 +1,24 @@
+---
+description: CORNET flagship layout — orchestrator, plugins, tasks, and where to start
+alwaysApply: true
+---
+
+# Architecture
+
+This repo is the flagship framework (`python -m cornet`). Entry points:
+
+- CLI: `cornet/__main__.py` — `run`, `view`, `ui`
+- Orchestrator: `cornet/orchestrator.py` — config, sweeps, plugin lifecycle, eval, leaderboard
+- Config: `cornet/config/schema.py` and `cornet/config/loader.py` (`_schema: unified-v1`)
+- Plugins: `cornet/plugins/` — `ns3`, `mininet`, `gazebo`
+- Middleware: `cornet/middleware/` — clock, packet dispatcher, AoI tracker, TUN manager
+- NS-3 profiles: `cornet/scenarios/` — `5g_nr_urllc`, `5g_nr_embb`, `5g_nr_mmtc`, `6g_thz`
+- Experiments: `tasks/<name>/config.yaml`, optional `eval/eval_tool.py`, `launch.py`, `world.sdf`
+
+Shipped tasks:
+
+- `tasks/pendulum_nr_control` — NS-3 5G NR URLLC, Gazebo pendulum, metric `mean_aoi_ms`
+- `tasks/uav_wifi_control` — Mininet-WiFi, Gazebo UAV, metric `position_rms` (needs root)
+- `tasks/aoi_5phase_eval` — NS-3 scheduler sweep, metric `mean_aoi_ms`
+
+Docs: `docs/GETTING_STARTED.md`, `docs/ARCHITECTURE.md`, `docs/reference/config-schema.md`, `docs/INSTALL.md`.

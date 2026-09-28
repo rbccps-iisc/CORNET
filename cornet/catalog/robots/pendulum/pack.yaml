@@ -1,0 +1,34 @@
+name: pendulum
+kind: robots
+version: "1"
+description: Inverted pendulum. Sensor and torque cross the network on two UDP flows.
+provides:
+  metric: mean_aoi_ms
+requires:
+  gazebo: classic-11
+  ros: humble
+  root: false
+compatible:
+  worlds: [open_plain]
+  networks: [nr, lte]
+license:
+  spdx: project-owned
+  vendored: true
+  provenance: tasks/pendulum_nr_control/models/pendulum.urdf
+network_flows:
+  - name: state
+    direction: robot_to_controller
+    topic: /pendulum/state
+    rate_hz: 100
+    size_bytes: 64
+    port: 5001
+  - name: torque
+    direction: controller_to_robot
+    topic: /pendulum/torque
+    rate_hz: 100
+    size_bytes: 32
+    port: 5002
+model_path: tasks/pendulum_nr_control/models/pendulum.urdf
+physics_step_s: 0.001
+count_min: 1
+count_max: 1

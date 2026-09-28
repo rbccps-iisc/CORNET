@@ -63,10 +63,15 @@ Generated from the fully-patched CORNET3.0 NR v2.4 working tree.
 > experiments, this code is **inert** — it will be compiled in but has no effect
 > unless `schedulerType=edf` or `schedulerType=aoi` is explicitly set.
 
-**Verified conflict**: Both individual NR patches modify `CMakeLists.txt` from
-the same NR v2.4 baseline (`index b6976e30`). Applying EDF first causes AoI's
-`CMakeLists.txt` hunk to fail (context mismatch). `nr_schedulers.patch`
-resolves this by applying both sets of changes in a single atomic hunk.
+`nr_edf_only.patch` and `nr_aoi_only.patch` register each scheduler at a
+different `CMakeLists.txt` anchor, so each applies on a clean v2.4 tree and
+the two also apply together in either order. AoI still subclasses EDF, so a
+build that includes AoI must apply `nr_edf_only.patch` as well (the
+`aoi-measurement` profile does that). `nr_schedulers.patch` remains the
+combined patch used by the default `full` profile.
+
+The files under `originals/` are not those patches. They still share one
+`CMakeLists.txt` context and must not be applied.
 
 | File modified/added | Patch type | Change |
 |---|---|---|
@@ -97,13 +102,11 @@ cd $NS3_DIR/contrib/nr
 git apply ../../scripts/patches/ns3/v2.4-ns3.38/nr_schedulers.patch
 ```
 
-> **Why not apply the individual NR patches?**  
-> `nr_edf_scheduler.patch` and `nr_aoi_mac_scheduler.patch` both start from
-> `CMakeLists.txt` blob `b6976e30` but produce different blob hashes.
-> Applying EDF first changes the blob; the AoI patch then cannot match its
-> context and produces a `.rej` file for `CMakeLists.txt`.
-> `nr_schedulers.patch` resolves this by expressing both changes as a single
-> atomic diff.
+> **Why not apply the files in `originals/`?**
+> `originals/nr_edf_scheduler.patch` and `originals/nr_aoi_mac_scheduler.patch`
+> both start from the same `CMakeLists.txt` context. Applying one changes that
+> context and the other produces a `.rej`. Use `nr_edf_only.patch` and
+> `nr_aoi_only.patch`, or the combined `nr_schedulers.patch`.
 
 ## Automated Install
 

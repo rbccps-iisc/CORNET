@@ -210,6 +210,7 @@ class PositionServer:
         self._on_update = on_update
 
         self._positions: dict[str, dict[str, float]] = {}
+        self._subscribers: list[socket.socket] = []
         self._lock = threading.Lock()
         self._stopped = False
         self._thread: threading.Thread | None = None
@@ -243,6 +244,23 @@ class PositionServer:
         with self._lock:
             return {k: dict(v) for k, v in self._positions.items()}
 
+    def broadcast(self, payload: dict) -> None:
+        """Send one JSON line to every connected client.
+
+        Used by the realtime position forwarder. Lines that are not
+        ``{"name","x","y","z"}`` updates are not stored as positions.
+        """
+        raw = (json.dumps(payload) + "\n").encode()
+        with self._lock:
+            subscribers = list(self._subscribers)
+        for client in subscribers:
+            try:
+                client.sendall(raw)
+            except OSError:
+                with self._lock:
+                    if client in self._subscribers:
+                        self._subscribers.remove(client)
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
@@ -265,6 +283,8 @@ class PositionServer:
                 continue
             except OSError:
                 break
+            with self._lock:
+                self._subscribers.append(conn)
             t = threading.Thread(
                 target=self._handle_client,
                 args=(conn,),
@@ -288,11 +308,14 @@ class PositionServer:
                 buf += data
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
-                    self._process_position_line(line.strip())
+                    self._process_position_line(line.strip(), source=conn)
         finally:
+            with self._lock:
+                if conn in self._subscribers:
+                    self._subscribers.remove(conn)
             conn.close()
 
-    def _process_position_line(self, raw: bytes) -> None:
+    def _process_position_line(self, raw: bytes, source: socket.socket | None = None) -> None:
         if not raw:
             return
         try:
@@ -304,8 +327,19 @@ class PositionServer:
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.debug("PositionServer: malformed message %r: %s", raw[:80], e)
             return
+        payload = raw + b"\n"
         with self._lock:
             self._positions[name] = {"x": x, "y": y, "z": z}
+            subscribers = list(self._subscribers)
+        for client in subscribers:
+            if client is source:
+                continue
+            try:
+                client.sendall(payload)
+            except OSError:
+                with self._lock:
+                    if client in self._subscribers:
+                        self._subscribers.remove(client)
         if self._on_update is not None:
             try:
                 self._on_update(name, x, y, z)

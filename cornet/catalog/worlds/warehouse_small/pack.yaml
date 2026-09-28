@@ -1,0 +1,35 @@
+name: warehouse_small
+kind: worlds
+version: "1"
+description: AWS RoboMaker small warehouse, about 12 x 19 m. Assets are not vendored yet.
+provides: {}
+requires:
+  gazebo: classic-11
+compatible:
+  robots: [turtlebot3, px4_x500]
+  networks: [nr, lte, wifi_ns3]
+license:
+  spdx: MIT-0
+  vendored: false
+  provenance: ~/catkin_ws/src/aws-robomaker-small-warehouse-world (LICENSE MIT-0, package.xml Apache-2.0)
+  source_url: https://github.com/aws-robotics/aws-robomaker-small-warehouse-world
+bounds:
+  x_min: -6
+  x_max: 6
+  y_min: -9.5
+  y_max: 9.5
+supported_deployments:
+  - single_cell
+  - custom
+supported_anchors:
+  - centre_site
+  - sector_boundary
+indoor_of:
+  - 3gpp_umi
+  - 3gpp_uma
+  - 3gpp_rma
+roof: true
+roof_variants:
+  - roof
+  - no_roof
+notes: Multi-cell InH and InF do not fit this hall. PX4 indoor flight uses the no-roof variant.

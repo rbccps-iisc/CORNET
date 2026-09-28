@@ -226,9 +226,7 @@ Every CORNET-exposed NS-3 feature is classified at one of three levels:
 | `cornet-integrated` | CORNET patches or config fields expose the feature. Not yet exercised end-to-end in a leaderboard run. |
 | `cornet-validated` | Feature has been exercised end-to-end under `make validate-*` with a real leaderboard entry. Results are reproducible. |
 
-**Lane guarantee**: The stable lane (`v2.4-ns3.38`) provides `cornet-validated` for all
-exposed features. The latest lane (`v4.2-ns3.47`) is `cornet-integrated` for most features
-until `make validate-v47` produces a real leaderboard entry.
+**Lane guarantee**: The stable lane (`v2.4-ns3.38`) is the default. `v4.2-ns3.47` is the stepping stone. `v5.1-ns3.48` (`make install-ns3-v51`, tag `ns3-v51`) is the explicit lane for NR handover, hexagonal wrap-around, Indoor Factory, and TR 36.777 aerial path loss. A capability stays `cornet-integrated` until a real `make validate-*` leaderboard entry exercises it.
 
 ### Declaring required capabilities (optional)
 
@@ -251,7 +249,13 @@ validation level, the orchestrator exits with a clear error explaining which lan
 | AoI measurement, EDF/AoI scheduling | Stable (`v2.4-ns3.38`) | `ns3_lte_pdcp.patch` + `nr_schedulers.patch` |
 | Pendulum control, UAV control | Stable (`v2.4-ns3.38`) | `ns3_lte_pdcp.patch` + `nr_schedulers.patch` |
 | CSI-RS, beamforming, MIMO | Latest (`v4.2-ns3.47`) | `ns3_lte_pdcp.patch` only (`nr_schedulers.patch` is inert but present) |
-| Sub-band CSI, Kronecker beamforming | Latest (`v4.2-ns3.47`) | No CORNET patches required |
+| Sub-band CSI, Kronecker beamforming | Stepping stone (`v4.2-ns3.47`) | No CORNET patches required |
+| NR handover | `v5.1-ns3.48` | None (upstream). Declare `nr_handover` |
+| Hex wrap-around | `v4.2-ns3.47` or `v5.1-ns3.48` | `--wraparound=true` and `--hexSites` of 1, 7, or 19 on the v5.1 template. v2.4 rejects it (`hex_wraparound`) |
+| Model A blockage | Any lane | `--blockage=true` sets `ThreeGppChannelModel` `Blockage` |
+| Indoor Factory | `v5.1-ns3.48` | `ns3_channel_inf.patch`. Channel scenario `InF-SL`, `InF-DL`, `InF-SH`, or `InF-DH` |
+| Aerial UMa/UMi/RMa | `v5.1-ns3.48` | `ns3_channel_aerial_36777.patch`. Scope is `aerial path loss only`. A flat `network` value of `UMa-AV`, `UMi-AV`, or `RMa-AV` writes that caveat into `provenance.json` |
+| Blockage Model B | None | Deferred. `blockage_model_b` is not supported on any lane |
 
 ---
 

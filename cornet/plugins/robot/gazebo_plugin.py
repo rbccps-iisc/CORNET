@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import signal
 import subprocess
 import time
@@ -20,6 +22,14 @@ logger = logging.getLogger(__name__)
 _CLOCK_TOPIC_TIMEOUT = 60  # seconds to wait for /clock to appear
 
 
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    try:
+        os.killpg(proc.pid, sig)
+    except (ProcessLookupError, PermissionError):
+        if proc.poll() is None:
+            proc.send_signal(sig)
+
+
 class GazeboPlugin(Plugin):
     """Launches Gazebo Classic via ros2 launch; spawns robots per config.
 
@@ -31,6 +41,7 @@ class GazeboPlugin(Plugin):
         self._config = None
         self._context = None
         self._launch_path: Path | None = None
+        self._launch_dir: Path | None = None
         self._launch_proc: subprocess.Popen | None = None
         self._auto_generated = False
 
@@ -55,19 +66,29 @@ class GazeboPlugin(Plugin):
         if self._auto_generated:
             # Generate from robot config — use a temp dir
             import tempfile
-            task_dir = Path(tempfile.mkdtemp(prefix="cornet_launch_"))
+            self._launch_dir = Path(tempfile.mkdtemp(prefix="cornet_launch_"))
             from cornet.gazebo.generic_launch import generate
-            self._launch_path = generate(cfg.robot, task_dir)
+            self._launch_path = generate(cfg.robot, self._launch_dir)
             logger.info("Auto-generated launch file: %s", self._launch_path)
 
         if self._launch_path is None or not self._launch_path.exists():
             raise FileNotFoundError(f"Launch file not found: {self._launch_path}")
 
         logger.info("Launching Gazebo via: ros2 launch %s", self._launch_path)
+        env = os.environ.copy()
+        robot = getattr(cfg, "robot", None)
+        model_paths = [path for path in (getattr(robot, "model_paths", None) or []) if path]
+        if model_paths:
+            existing = env.get("GAZEBO_MODEL_PATH", "")
+            prefix = os.pathsep.join(model_paths)
+            env["GAZEBO_MODEL_PATH"] = f"{prefix}{os.pathsep}{existing}" if existing else prefix
         self._launch_proc = subprocess.Popen(
             ["ros2", "launch", str(self._launch_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+            env=env,
         )
 
         self._wait_for_clock()
@@ -76,19 +97,39 @@ class GazeboPlugin(Plugin):
         pass
 
     def stop(self) -> None:
-        if self._launch_proc is not None and self._launch_proc.poll() is None:
-            self._launch_proc.send_signal(signal.SIGTERM)
-            try:
-                self._launch_proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self._launch_proc.kill()
-                self._launch_proc.wait()
-            logger.info("Gazebo launch process stopped")
+        proc = self._launch_proc
         self._launch_proc = None
+        if proc is not None:
+            self._stop_process_group(proc)
+            logger.info("Gazebo launch process stopped")
 
-        # Clean up auto-generated file
-        if self._auto_generated and self._launch_path and self._launch_path.exists():
+        if self._auto_generated and self._launch_dir is not None:
+            shutil.rmtree(self._launch_dir, ignore_errors=True)
+            self._launch_dir = None
+        elif self._auto_generated and self._launch_path and self._launch_path.exists():
             self._launch_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _stop_process_group(proc: subprocess.Popen) -> None:
+        """Stop ros2 launch and the gzserver/gzclient processes it spawned.
+
+        SIGTERM on the launch parent leaves gzserver running. The launch
+        process is started in its own session, so the group id is its pid
+        even after the parent has already exited.
+        """
+        if proc.poll() is None:
+            _signal_group(proc, signal.SIGINT)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+        _signal_group(proc, signal.SIGKILL)
+        if proc.poll() is None:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
     def collect(self, output_dir: Path) -> None:
         pass
@@ -108,8 +149,12 @@ class GazeboPlugin(Plugin):
                 logger.info("Gazebo /clock topic available — simulation running")
                 return
             if self._launch_proc and self._launch_proc.poll() is not None:
+                output = ""
+                if self._launch_proc.stdout is not None:
+                    output = self._launch_proc.stdout.read() or ""
+                detail = f"\n{output}" if output else ""
                 raise RuntimeError(
-                    f"ros2 launch exited early (code {self._launch_proc.returncode})"
+                    f"ros2 launch exited early (code {self._launch_proc.returncode}){detail}"
                 )
             time.sleep(2)
         raise TimeoutError(

@@ -41,13 +41,17 @@ capabilities:
         patches: [ns3_lte_pdcp.patch]
         level: cornet-validated
       - patch_set: v4.2-ns3.47
-        patches: [ns3_lte_pdcp.patch]
-        level: cornet-integrated   # rebased; not yet end-to-end validated
+        patches: [nr_pdcp_aoi.patch]
+        level: cornet-integrated
+      - patch_set: v5.1-ns3.48
+        patches: [nr_pdcp_aoi.patch]
+        level: cornet-integrated
     config_fields: []
     notes: >
-      AoI timestamp instrumentation on LtePdcp. Useful for ANY CORNET experiment
-      measuring packet age — including CSI-RS, MIMO, and fronthaul experiments.
-      Not coupled to EDF/AoI scheduler presence.
+      On NR >= v3.2 the NR bearer uses NrPdcp, which already carries a sender
+      timestamp (NrPdcpTag). ns3_lte_pdcp.patch does not affect those bearers.
+      nr_pdcp_aoi.patch adds PDCP repetitions and duplicate filtering on NrPdcp.
+      The v2.4 row remains the LTE PDCP instrumentation.
 
   - name: cornet_tap_bridge_contract
     type: infrastructure
@@ -57,6 +61,9 @@ capabilities:
         patches: [ns3_lte_pdcp.patch]
         level: cornet-validated
       - patch_set: v4.2-ns3.47
+        patches: [ns3_lte_pdcp.patch]
+        level: cornet-integrated
+      - patch_set: v5.1-ns3.48
         patches: [ns3_lte_pdcp.patch]
         level: cornet-integrated
     config_fields:
@@ -85,14 +92,17 @@ capabilities:
         level: cornet-validated
       - patch_set: v4.2-ns3.47
         patches: [nr_schedulers.patch]
-        level: cornet-integrated   # rebased patch present; not yet end-to-end validated
+        level: cornet-validated   # pendulum_nr_control@ns3-v47 SUCCESS, schedulerType edf
+      - patch_set: v5.1-ns3.48
+        patches: [nr_schedulers.patch]
+        level: cornet-integrated
     config_fields:
       - network.scenario.scheduler   # set to "ofdma-edf" or "edf"
     notes: >
       EDF MAC scheduler. Scoped to AoI and deadline-scheduling experiments.
       Inert in CSI-RS, MIMO, and fronthaul experiments even when applied.
-      Currently bundled with aoi_mac_scheduler in nr_schedulers.patch (CMakeLists
-      conflict); future plan is independent nr_edf_only.patch.
+      nr_schedulers.patch remains the full-profile patch. nr_edf_only.patch
+      applies on its own; AoI builds still need it because AoI subclasses EDF.
 
   - name: aoi_mac_scheduler
     type: research-feature
@@ -104,13 +114,16 @@ capabilities:
         level: cornet-validated
       - patch_set: v4.2-ns3.47
         patches: [nr_schedulers.patch]
+        level: cornet-validated   # pendulum_aoi_scheduler@ns3-v47 SUCCESS, schedulerType aoi
+      - patch_set: v5.1-ns3.48
+        patches: [nr_schedulers.patch]
         level: cornet-integrated
     config_fields:
       - network.scenario.scheduler   # set to "ofdma-aoi" or "aoi"
     notes: >
-      AoI-aware MAC scheduler. Currently coupled with custom_edf_scheduler in
-      nr_schedulers.patch due to CMakeLists.txt conflict; future plan is
-      independent nr_aoi_only.patch. Domain: AoI-measurement experiments only.
+      AoI-aware MAC scheduler. nr_aoi_only.patch applies independently of the
+      combined nr_schedulers.patch. A build still needs nr_edf_only.patch
+      first, because the AoI classes subclass the EDF classes.
 
   # ─── upstream-only features (no CORNET patches required) ──────────────────────
 
@@ -190,3 +203,166 @@ capabilities:
       NrMacSchedulerTdmaAi and NrMacSchedulerOfdmaAi (ns3-gym based) introduced
       in NR v4.0 (GSoC 2024 contribution). No CORNET patches required.
       Requires ns3-gym module to be installed separately.
+
+  # ─── upstream features from NR v2.5–v4.2 release notes ────────────────────────
+  # Maintainer input: cttc-lena/nr CHANGES.md at tag v4.2. Not cornet-integrated.
+
+  - name: qos_mac_scheduler
+    type: upstream-feature
+    nr_introduced: "2.5"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      NrMacSchedulerOfdmaQos and NrMacSchedulerTdmaQos schedule from QoS flow
+      requirements. Not in the v2.4 tree and not exposed by CORNET config.
+
+  - name: su_mimo
+    type: upstream-feature
+    nr_introduced: "3.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      General SU-MIMO model that replaced DP-MIMO in NR v3.0, including
+      Type-I codebook search from v3.1. No CORNET scratch or config support.
+
+  - name: nr_pdcp
+    type: upstream-feature
+    nr_introduced: "3.2"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      NR uses its own PDCP from v3.2. ns3_lte_pdcp.patch instruments LTE PDCP
+      only, so AoI timestamps on NR bearers are not provided by that patch.
+
+  - name: fronthaul_control
+    type: upstream-feature
+    nr_introduced: "3.3"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      NrFhControl simulates a limited-capacity fronthaul link. EnableFhControl
+      exists on the v4.2 lane. CORNET does not expose it.
+
+  - name: nr_channel_helper
+    type: upstream-feature
+    nr_introduced: "4.0"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      NrChannelHelper configures 3GPP, NYUSIM, and fluctuating two-ray channels.
+      Not wrapped by a CORNET scenario profile.
+
+  - name: hex_wraparound
+    type: upstream-feature
+    nr_introduced: "4.1"
+    supported_in:
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: upstream-available
+      - patch_set: v5.1-ns3.48
+        patches: []
+        level: cornet-integrated
+    config_fields: []
+    notes: >
+      HexagonalGridScenarioHelper::InstallWraparound. The v5.1 scratch template
+      accepts --wraparound with --hexSites of 1, 7, or 19. v2.4 has no wrap-around.
+
+  - name: nr_handover
+    type: upstream-feature
+    nr_introduced: "5.0"
+    supported_in:
+      - patch_set: v5.1-ns3.48
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      NR handover, including HandoverTotalTime, arrived in 5G-LENA v5.0 and is
+      in the pinned v5.1 commit cedceadda17392c90587fb9400eb9b1f8c236713.
+      Promoted to cornet-validated only after the validate-v51 smoke and a
+      co-simulation that exercises handover. NS-3 pin d2add90b452d600cfb4859baed8e9ea633519447.
+
+  - name: blockage_model_a
+    type: upstream-feature
+    nr_introduced: "2.4"
+    supported_in:
+      - patch_set: v2.4-ns3.38
+        patches: []
+        level: cornet-integrated
+      - patch_set: v4.2-ns3.47
+        patches: []
+        level: cornet-integrated
+      - patch_set: v5.1-ns3.48
+        patches: []
+        level: cornet-integrated
+    config_fields: []
+    notes: >
+      ThreeGppChannelModel Blockage attribute, TR 38.901 section 7.6.4.1 Model A.
+      Scratch scripts accept --blockage.
+
+  - name: channel_inf
+    type: research-feature
+    nr_introduced: "5.1"
+    supported_in:
+      - patch_set: v5.1-ns3.48
+        patches: [ns3_channel_inf.patch]
+        level: cornet-integrated
+    config_fields: []
+    notes: >
+      InF-SL, InF-DL, InF-SH, and InF-DH registered on NR's channel helper.
+      Uncalibrated. calibration/inf/VERDICT.md: the Table 7.4.1-1 anchor matches,
+      but serving-cell medians were not checked against R1-1909704.
+      Failing sub-scenarios: InF-SL, InF-DL, InF-SH, InF-DH.
+      NS-3 pin d2add90b452d600cfb4859baed8e9ea633519447.
+      NR pin cedceadda17392c90587fb9400eb9b1f8c236713.
+
+  - name: channel_aerial_36777
+    type: research-feature
+    nr_introduced: "5.1"
+    supported_in:
+      - patch_set: v5.1-ns3.48
+        patches:
+          - ns3_channel_aerial_36777.patch
+        level: cornet-integrated
+    config_fields: []
+    notes: >
+      Scope is aerial path loss only. ns3_channel_aerial_36777.patch adds
+      TR 36.777 UMa-AV, UMi-AV, and RMa-AV path loss and LOS probability.
+      Fast fading stays the terrestrial model. A flat network value of
+      UMa-AV, UMi-AV, or RMa-AV writes that caveat into provenance.json.
+      Not exercised by a leaderboard run. NS-3 pin
+      d2add90b452d600cfb4859baed8e9ea633519447.
+
+  - name: sionna_rt
+    type: upstream-feature
+    nr_introduced: "5.1"
+    supported_in:
+      - patch_set: v5.1-ns3.48
+        patches: []
+        level: upstream-available
+    config_fields: []
+    notes: >
+      Optional Sionna RT hooks in the pinned NS-3 3.48 tree
+      d2add90b452d600cfb4859baed8e9ea633519447. Not wrapped by a CORNET script.
+
+  - name: blockage_model_b
+    type: upstream-feature
+    nr_introduced: "5.1"
+    supported_in: []
+    config_fields: []
+    notes: >
+      Deferred. TR 38.901 Blockage Model B is not implemented on any CORNET lane.

@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.0",
     "PyYAML>=6.0",
     "rich",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

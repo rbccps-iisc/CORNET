@@ -18,6 +18,7 @@ Root configuration model. Every `config.yaml` must parse as `UnifiedConfig`.
 | `network` | [NetworkConfig](#networkconfig) | — | ✓ | Network simulation backend configuration (NS-3, Mininet, or both). |
 | `robot` | [RobotConfig](#robotconfig) | — | ✓ | Robot simulation backend configuration (Gazebo + ROS 2). |
 | `experiment` | [ExperimentConfig](#experimentconfig) | — | ✓ | Experiment runtime settings: duration, output, metrics, and optional parameter sweep. |
+| `catalog` | [CatalogProvenance](#catalogprovenance) | null | null |  | Catalogue provenance written by the scenario compiler. Absent on hand-written tasks. |
 
 ## NetworkConfig
 
@@ -32,7 +33,13 @@ Network simulation backend settings (`network:` section).
 | `middleware` | [MiddlewareConfig](#middlewareconfig) | null | null |  | Co-simulation middleware settings (TUN bridge, packet dispatcher, AoI tracker). |
 | `mobility` | [MobilityConfig](#mobilityconfig) | null | null |  | Live position update settings (PositionBroadcaster from Gazebo to NS-3). |
 | `scenario` | [ScenarioConfig](#scenarioconfig) | null | null |  | 5G/6G NS-3 scenario profile. Required when type includes 'ns3'. |
+| `radio_sites` | [RadioSitesConfig](#radiositesconfig) | null | null |  | 3GPP deployment preset. When set, GNB nodes are taken from layout.json and hand-written GNB nodes are rejected. |
+| `population` | list[[PopulationEntity](#populationentity)] | — |  | Background population. Walkers are Gazebo actors; devices are NS-3 nodes. |
+| `blockage` | string | `"none"` |  | Statistical blockage. model_a enables TR 38.901 Model A with 3GPP defaults. |
+| `non_self_blockers` | string | null | null |  | from_density is a non-standard mapping and sets catalog.standard to false. |
+| `channel_update_ms` | integer | null | null |  | ThreeGpp channel and condition UpdatePeriod in milliseconds. Mobile scenarios use 100. |
 | `requires_nr_capability` | list[string] | string | null | null |  | Optional: one or more capability names from scripts/patches/ns3/CAPABILITY_MATRIX.yaml that this task requires. The orchestrator will check the installed NS-3 lane and exit with a clear error if the capability is not available at the required level. Example: 'custom_edf_scheduler' or ['custom_edf_scheduler', 'pdcp_aoi_timestamps']. |
+| `timing_log` | boolean | `False` |  | Forward --timingLog and --timingPeriodMs to the NS-3 scratch script even when it is not a bundled CORNET script. Bundled scripts receive the flags automatically. Custom scripts that do not implement the flags must leave this false. |
 
 ## NodeConfig
 
@@ -96,7 +103,7 @@ Live position update settings for PositionBroadcaster.
 | Field | Type | Default | Required | Description |
 |---|---|---|---|---|
 | `enabled` | boolean | `False` |  | Enable the PositionBroadcaster, which pushes Gazebo model poses to NS-3 node positions in real time. |
-| `source` | string | `"socket"` |  | Position data source: 'socket' (CORNET middleware), 'ros2_topic' (ROS 2 /tf), or 'none' (static positions only). |
+| `source` | string | `"socket"` |  | Position data source: 'socket', 'ros2_topic' (/tf), 'model_states' (Gazebo model states, including actors), or 'none'. |
 | `update_hz` | number | `10.0` |  | Position update rate in Hz when update_mode='periodic'. |
 | `update_mode` | string | `"periodic"` |  | When to push position updates: 'periodic' (every 1/update_hz s), 'threshold' (when movement exceeds position_threshold_m), 'step_aligned' (on NS-3 simulation step boundaries). |
 | `position_threshold_m` | number | `0.5` |  | Minimum Euclidean movement in metres that triggers a position update when update_mode='threshold'. |
@@ -113,6 +120,60 @@ Live position update settings for PositionBroadcaster.
 | `scheduler` | string | null | null |  | NR MAC scheduler override: 'ofdma-rr', 'ofdma-pf', 'ofdma-edf', 'ofdma-aoi'. None = scenario default. |
 | `experimental` | boolean | `False` |  | Automatically set to True for profiles that are not production-ready (e.g. 6g_thz). Do not set manually. |
 
+## RadioSitesConfig
+
+3GPP deployment preset (`network.radio_sites`).
+
+| Field | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `deployment` | string | — | ✓ | Deployment preset. ISD and BS height are derived from the preset. |
+| `rings` | integer | `0` |  | Hex rings: 0, 1, or 2 sites rings (1, 7, or 19 sites). |
+| `sectors` | integer | `3` |  | Sectors per site. 1 or 3. |
+| `inf_scenario` | string | null | null |  | InF sub-scenario. Required for 3gpp_inf. SL/DL use 1.5 m BS height; SH/DH use 8 m. |
+| `inf_hall` | string | `"small"` |  | InF hall. small is 120 x 60 m at 20 m ISD; big is 300 x 150 m at 50 m ISD. |
+| `rma_isd_m` | integer | null | null |  | RMa ISD variant in metres. 1732 or 5000. Ignored for other deployments. |
+| `robot_anchor` | string | `"centre_site"` |  | Point in the layout that is aligned with the world origin. |
+| `indoor_building` | boolean | `False` |  | Place the world as a building inside a macro layout, with outdoor-to-indoor loss. |
+| `wraparound` | boolean | `False` |  | Install hexagonal wrap-around. Requires hex_wraparound. |
+| `background_ues_per_cell` | integer | `10` |  | Background UEs per cell. Reduction is recorded in provenance. |
+| `custom_sites` | list[[SitePosition](#siteposition)] | — |  | Explicit site positions for deployment custom. Each item has x, y, and optional z. |
+| `blockage` | string | `"none"` |  | TR 38.901 Model A when model_a. Model A does not follow actor positions. |
+| `non_self_blockers` | string | null | null |  | from_density maps crowd density onto NumNonSelfBlocking and forces standard false. |
+
+## SitePosition
+
+One explicit site for a custom deployment.
+
+| Field | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `name` | string | null | null |  | Site name. The compiler assigns gnbN when omitted. |
+| `x` | number | — | ✓ | Site X position in metres. |
+| `y` | number | — | ✓ | Site Y position in metres. |
+| `z` | number | null | null |  | Site height in metres. None uses the deployment BS height. |
+
+## PopulationEntity
+
+One background-population archetype.
+
+| Field | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `archetype` | string | — | ✓ | Background entity. Walkers have a Gazebo body; phone users also have an NS-3 UE. |
+| `count` | integer | `1` |  | How many entities of this archetype to place. |
+| `zone` | string | null | null |  | World zone name used for waypoint placement. |
+
+## CatalogProvenance
+
+Catalogue compiler provenance (`catalog`).
+
+| Field | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `robot` | string | — | ✓ | Robot pack name. |
+| `world` | string | — | ✓ | World pack name. |
+| `network` | string | — | ✓ | Network pack name. |
+| `versions` | dict[str, string] | — |  | Pack name to pack version. |
+| `standard` | boolean | `True` |  | False for a custom deployment or a non-default blockage mapping. |
+| `controller_placement` | string | `"edge_server"` |  | edge_server is one radio hop. ue places the controller as a second UE. |
+
 ## RobotConfig
 
 Robot simulation backend settings (`robot:` section).
@@ -123,6 +184,7 @@ Robot simulation backend settings (`robot:` section).
 | `launch_file` | string | null | null |  | Path to a ROS 2 launch file to use instead of auto-generated launch. None = Gazebo plugin auto-generates. |
 | `world` | string | null | null |  | Path to the Gazebo world file (.sdf or .world). None = Gazebo plugin auto-generates an empty world. |
 | `robots` | list[[RobotEntry](#robotentry)] | `[]` |  | List of robots to spawn in the simulation world. |
+| `model_paths` | list[string] | — |  | Directories prepended to GAZEBO_MODEL_PATH so world packs can resolve model:// URIs. |
 
 ## RobotEntry
 
@@ -165,10 +227,12 @@ Experiment runtime settings (`experiment:` section).
 |---|---|---|---|---|
 | `name` | string | — | ✓ | Human-readable experiment name, used as the leaderboard title. |
 | `duration` | number | — | ✓ | Experiment wall-clock duration in seconds. The orchestrator terminates all plugins after this time. |
+| `seed` | integer | `1` |  | Seed for catalogue population waypoints and NS-3 repeat separation. |
 | `output_dir` | string | `"results"` |  | Directory where results, logs, and leaderboard entries are written (relative to task directory or absolute). |
 | `primary_metric` | string | null | null |  | Key from EvalTool output to rank leaderboard entries by. None = leaderboard is unranked. |
 | `higher_is_better` | boolean | `False` |  | Leaderboard sort direction for primary_metric. True = higher score ranks first; False = lower score ranks first. |
 | `sweep` | [SweepConfig](#sweepconfig) | null | null |  | Parameter sweep configuration. When set, the orchestrator expands variants and runs each independently. |
+| `timing` | [TimingConfig](#timingconfig) | — |  | Thresholds for per-run timing telemetry (Gazebo RTF and NS-3 realtime lag). Monitoring only. |
 
 ## SweepConfig
 

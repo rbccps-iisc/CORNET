@@ -15,6 +15,31 @@ def test_pendulum_task_config_loads() -> None:
     assert cfg.experiment.primary_metric == "mean_aoi_ms"
 
 
+def test_pendulum_launch_assets_exist_and_publish_clock() -> None:
+    from cornet.gazebo.generic_launch import generate
+    from cornet.orchestrator import Orchestrator
+
+    task = TASK_ROOT / "pendulum_nr_control"
+    cfg = load_unified(task / "config.yaml")
+    Orchestrator()._resolve_robot_assets(cfg, task)
+
+    world = Path(cfg.robot.world)
+    model = Path(cfg.robot.robots[0].model.path)
+    assert world.is_file()
+    assert model.is_file()
+    assert "libgazebo_ros_init.so" not in world.read_text()
+
+    launch = generate(cfg.robot, task)
+    try:
+        source = launch.read_text()
+        compile(source, str(launch), "exec")
+        assert '-s", "libgazebo_ros_init.so"' in source
+        assert str(world) in source
+        assert str(model) in source
+    finally:
+        launch.unlink(missing_ok=True)
+
+
 def test_uav_task_config_loads() -> None:
     cfg = load_unified(TASK_ROOT / "uav_wifi_control" / "config.yaml")
     assert cfg.network.plugin == "mininet"

@@ -1,0 +1,720 @@
+diff --git a/src/propagation/model/channel-condition-model.cc b/src/propagation/model/channel-condition-model.cc
+index 1e3f1dd..f556a02 100644
+--- a/src/propagation/model/channel-condition-model.cc
++++ b/src/propagation/model/channel-condition-model.cc
+@@ -17,6 +17,7 @@
+ #include "ns3/simulator.h"
+ #include "ns3/string.h"
+ 
++#include <algorithm>
+ #include <cmath>
+ 
+ namespace
+@@ -983,4 +984,78 @@ ThreeGppNTNRuralChannelConditionModel::ComputePlos(Ptr<const MobilityModel> a,
+     return SuburbanRuralLOSProb.at(quantizedElevAngle);
+ }
+ 
++
++// ------------------------------------------------------------------------- //
++
++NS_OBJECT_ENSURE_REGISTERED(ThreeGppInfChannelConditionModel);
++
++TypeId
++ThreeGppInfChannelConditionModel::GetTypeId()
++{
++    static TypeId tid =
++        TypeId("ns3::ThreeGppInfChannelConditionModel")
++            .SetParent<ThreeGppChannelConditionModel>()
++            .SetGroupName("Propagation")
++            .AddConstructor<ThreeGppInfChannelConditionModel>()
++            .AddAttribute("ClutterDensity",
++                          "Fraction of floor area occupied by clutter, r in (0, 1). "
++                          "TR 38.901 Table 7.2-4.",
++                          DoubleValue(0.2),
++                          MakeDoubleAccessor(&ThreeGppInfChannelConditionModel::m_clutterDensity),
++                          MakeDoubleChecker<double>(1e-6, 0.999))
++            .AddAttribute("ClutterSize",
++                          "Typical clutter size d_clutter in metres.",
++                          DoubleValue(10.0),
++                          MakeDoubleAccessor(&ThreeGppInfChannelConditionModel::m_clutterSize),
++                          MakeDoubleChecker<double>(0.1))
++            .AddAttribute("ClutterHeight",
++                          "Effective clutter height h_c in metres.",
++                          DoubleValue(2.0),
++                          MakeDoubleAccessor(&ThreeGppInfChannelConditionModel::m_clutterHeight),
++                          MakeDoubleChecker<double>(0.0))
++            .AddAttribute("BsAboveClutter",
++                          "True for InF-SH and InF-DH (BS above the clutter).",
++                          BooleanValue(false),
++                          MakeBooleanAccessor(&ThreeGppInfChannelConditionModel::m_bsAboveClutter),
++                          MakeBooleanChecker());
++    return tid;
++}
++
++ThreeGppInfChannelConditionModel::ThreeGppInfChannelConditionModel()
++    : ThreeGppChannelConditionModel()
++{
++}
++
++ThreeGppInfChannelConditionModel::~ThreeGppInfChannelConditionModel()
++{
++}
++
++double
++ThreeGppInfChannelConditionModel::ComputePlos(Ptr<const MobilityModel> a,
++                                              Ptr<const MobilityModel> b) const
++{
++    const double distance2D = Calculate2dDistance(a->GetPosition(), b->GetPosition());
++    // k = -d_clutter / ln(1 - r). High-BS multiplies by (h_BS - h_UT) / (h_c - h_UT).
++    double k = -m_clutterSize / std::log(1.0 - m_clutterDensity);
++    if (m_bsAboveClutter)
++    {
++        const double hBs = std::max(a->GetPosition().z, b->GetPosition().z);
++        const double hUt = std::min(a->GetPosition().z, b->GetPosition().z);
++        const double denom = m_clutterHeight - hUt;
++        if (denom <= 0.1)
++        {
++            NS_LOG_WARN("InF high-BS LOS formula needs h_c > h_UT; using the low-BS k");
++        }
++        else
++        {
++            k *= (hBs - hUt) / denom;
++        }
++    }
++    if (k < 1e-3)
++    {
++        k = 1e-3;
++    }
++    return std::exp(-distance2D / k);
++}
++
+ } // namespace ns3
+diff --git a/src/propagation/model/channel-condition-model.h b/src/propagation/model/channel-condition-model.h
+index 6c58140..e9d3d0c 100644
+--- a/src/propagation/model/channel-condition-model.h
++++ b/src/propagation/model/channel-condition-model.h
+@@ -933,6 +933,31 @@ class ThreeGppNTNRuralChannelConditionModel : public ThreeGppChannelConditionMod
+     double ComputePlos(Ptr<const MobilityModel> a, Ptr<const MobilityModel> b) const override;
+ };
+ 
++
++/**
++ * @ingroup propagation
++ *
++ * @brief LOS probability for 3GPP TR 38.901 Indoor Factory (Table 7.4.2-1).
++ *
++ * ClutterDensity, ClutterSize and ClutterHeight are the Table 7.2-4 parameters
++ * r, d_clutter and h_c. BsAboveClutter selects the InF-SH / InF-DH form.
++ */
++class ThreeGppInfChannelConditionModel : public ThreeGppChannelConditionModel
++{
++  public:
++    static TypeId GetTypeId();
++    ThreeGppInfChannelConditionModel();
++    ~ThreeGppInfChannelConditionModel() override;
++
++  private:
++    double ComputePlos(Ptr<const MobilityModel> a, Ptr<const MobilityModel> b) const override;
++
++    double m_clutterDensity{0.2};
++    double m_clutterSize{10.0};
++    double m_clutterHeight{2.0};
++    bool m_bsAboveClutter{false};
++};
++
+ } // namespace ns3
+ 
+ #endif /* CHANNEL_CONDITION_MODEL_H */
+diff --git a/src/propagation/model/three-gpp-propagation-loss-model.cc b/src/propagation/model/three-gpp-propagation-loss-model.cc
+index 7876329..ed78371 100644
+--- a/src/propagation/model/three-gpp-propagation-loss-model.cc
++++ b/src/propagation/model/three-gpp-propagation-loss-model.cc
+@@ -11,6 +11,8 @@
+ 
+ #include "ns3/boolean.h"
+ #include "ns3/double.h"
++#include "ns3/enum.h"
++#include "ns3/string.h"
+ #include "ns3/geocentric-constant-position-mobility-model.h"
+ #include "ns3/log.h"
+ #include "ns3/mobility-model.h"
+@@ -18,6 +20,7 @@
+ #include "ns3/pointer.h"
+ #include "ns3/simulator.h"
+ 
++#include <algorithm>
+ #include <cmath>
+ 
+ namespace
+@@ -2309,4 +2312,156 @@ ThreeGppNTNRuralPropagationLossModel::GetShadowingCorrelationDistance(
+     return correlationDistance;
+ }
+ 
++
++// ------------------------------------------------------------------------- //
++
++NS_OBJECT_ENSURE_REGISTERED(ThreeGppInfPropagationLossModel);
++
++TypeId
++ThreeGppInfPropagationLossModel::GetTypeId()
++{
++    static TypeId tid =
++        TypeId("ns3::ThreeGppInfPropagationLossModel")
++            .SetParent<ThreeGppPropagationLossModel>()
++            .SetGroupName("Propagation")
++            .AddConstructor<ThreeGppInfPropagationLossModel>()
++            .AddAttribute("SubScenario",
++                          "Indoor Factory sub-scenario (TR 38.901 Table 7.4.1-1).",
++                          EnumValue(ThreeGppInfPropagationLossModel::SL),
++                          MakeEnumAccessor<ThreeGppInfPropagationLossModel::SubScenario>(
++                              &ThreeGppInfPropagationLossModel::m_subScenario),
++                          MakeEnumChecker(ThreeGppInfPropagationLossModel::SL,
++                                          "SL",
++                                          ThreeGppInfPropagationLossModel::DL,
++                                          "DL",
++                                          ThreeGppInfPropagationLossModel::SH,
++                                          "SH",
++                                          ThreeGppInfPropagationLossModel::DH,
++                                          "DH"));
++    return tid;
++}
++
++ThreeGppInfPropagationLossModel::ThreeGppInfPropagationLossModel()
++    : ThreeGppPropagationLossModel()
++{
++    NS_LOG_FUNCTION(this);
++    m_channelConditionModel = CreateObject<ThreeGppInfChannelConditionModel>();
++}
++
++ThreeGppInfPropagationLossModel::~ThreeGppInfPropagationLossModel()
++{
++    NS_LOG_FUNCTION(this);
++}
++
++double
++ThreeGppInfPropagationLossModel::GetO2iDistance2dIn() const
++{
++    return 0;
++}
++
++void
++ThreeGppInfPropagationLossModel::WarnIfOutOfRange(double distance3D) const
++{
++    if (distance3D < 1.0 || distance3D > 600.0)
++    {
++        NS_ABORT_MSG_IF(m_enforceRanges, "InF 3D distance out of range");
++        NS_LOG_WARN("InF 3D distance is outside 1..600 m; the path loss may not be accurate");
++    }
++}
++
++double
++ThreeGppInfPropagationLossModel::PlLos(double distance3D) const
++{
++    // TR 38.901 Table 7.4.1-1, InF LOS.
++    const double fcGHz = m_frequency / 1e9;
++    return 31.84 + 21.50 * log10(distance3D) + 19.00 * log10(fcGHz);
++}
++
++double
++ThreeGppInfPropagationLossModel::GetLossLos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const
++{
++    NS_LOG_FUNCTION(this);
++    const double distance3D = CalculateDistance(a->GetPosition(), b->GetPosition());
++    WarnIfOutOfRange(distance3D);
++    const double loss = PlLos(distance3D);
++    NS_LOG_DEBUG("Loss " << loss);
++    return loss;
++}
++
++double
++ThreeGppInfPropagationLossModel::GetLossNlos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const
++{
++    NS_LOG_FUNCTION(this);
++    const double distance3D = CalculateDistance(a->GetPosition(), b->GetPosition());
++    WarnIfOutOfRange(distance3D);
++    const double fcGHz = m_frequency / 1e9;
++    const double plLos = PlLos(distance3D);
++    double pl = 0.0;
++    switch (m_subScenario)
++    {
++    case SL:
++        pl = 33.0 + 25.5 * log10(distance3D) + 20.0 * log10(fcGHz);
++        pl = std::max(pl, plLos);
++        break;
++    case DL: {
++        const double plSl = 33.0 + 25.5 * log10(distance3D) + 20.0 * log10(fcGHz);
++        pl = 18.6 + 35.7 * log10(distance3D) + 20.0 * log10(fcGHz);
++        pl = std::max(pl, std::max(plLos, plSl));
++        break;
++    }
++    case SH:
++        pl = 32.4 + 23.0 * log10(distance3D) + 20.0 * log10(fcGHz);
++        pl = std::max(pl, plLos);
++        break;
++    case DH:
++        pl = 33.63 + 21.9 * log10(distance3D) + 20.0 * log10(fcGHz);
++        pl = std::max(pl, plLos);
++        break;
++    }
++    NS_LOG_DEBUG("Loss " << pl);
++    return pl;
++}
++
++double
++ThreeGppInfPropagationLossModel::GetShadowingStd(Ptr<MobilityModel> /* a */,
++                                                 Ptr<MobilityModel> /* b */,
++                                                 ChannelCondition::LosConditionValue cond) const
++{
++    NS_LOG_FUNCTION(this);
++    if (cond == ChannelCondition::LosConditionValue::LOS)
++    {
++        return 4.3;
++    }
++    if (cond != ChannelCondition::LosConditionValue::NLOS)
++    {
++        NS_FATAL_ERROR("Unknown channel condition");
++    }
++    switch (m_subScenario)
++    {
++    case SL:
++        return 5.7;
++    case DL:
++        return 7.2;
++    case SH:
++        return 5.9;
++    case DH:
++        return 4.0;
++    }
++    return 4.3;
++}
++
++double
++ThreeGppInfPropagationLossModel::GetShadowingCorrelationDistance(
++    ChannelCondition::LosConditionValue cond) const
++{
++    NS_LOG_FUNCTION(this);
++    // TR 38.901 Table 7.5-6 Part-3: 10 m for every InF large-scale parameter.
++    if (cond != ChannelCondition::LosConditionValue::LOS &&
++        cond != ChannelCondition::LosConditionValue::NLOS)
++    {
++        NS_FATAL_ERROR("Unknown channel condition");
++    }
++    return 10.0;
++}
++
+ } // namespace ns3
+diff --git a/src/propagation/model/three-gpp-propagation-loss-model.h b/src/propagation/model/three-gpp-propagation-loss-model.h
+index b7d1f0e..1fd5e72 100644
+--- a/src/propagation/model/three-gpp-propagation-loss-model.h
++++ b/src/propagation/model/three-gpp-propagation-loss-model.h
+@@ -1019,6 +1019,49 @@ class ThreeGppNTNRuralPropagationLossModel : public ThreeGppPropagationLossModel
+     const std::map<int, std::vector<float>>* m_SFCL_SuburbanRural;
+ };
+ 
++
++/**
++ * @ingroup propagation
++ *
++ * @brief Path loss for the 3GPP TR 38.901 Indoor Factory scenarios.
++ *
++ * Table 7.4.1-1. SubScenario selects InF-SL, InF-DL, InF-SH, or InF-DH.
++ * The NLOS formula is max(PL, PL_LOS), and InF-DL also takes max with the
++ * InF-SL NLOS expression.
++ */
++class ThreeGppInfPropagationLossModel : public ThreeGppPropagationLossModel
++{
++  public:
++    enum SubScenario
++    {
++        SL,
++        DL,
++        SH,
++        DH
++    };
++
++    static TypeId GetTypeId();
++    ThreeGppInfPropagationLossModel();
++    ~ThreeGppInfPropagationLossModel() override;
++
++    ThreeGppInfPropagationLossModel(const ThreeGppInfPropagationLossModel&) = delete;
++    ThreeGppInfPropagationLossModel& operator=(const ThreeGppInfPropagationLossModel&) = delete;
++
++  private:
++    double GetLossLos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const override;
++    double GetLossNlos(Ptr<MobilityModel> a, Ptr<MobilityModel> b) const override;
++    double GetShadowingStd(Ptr<MobilityModel> a,
++                           Ptr<MobilityModel> b,
++                           ChannelCondition::LosConditionValue cond) const override;
++    double GetShadowingCorrelationDistance(ChannelCondition::LosConditionValue cond) const override;
++    double GetO2iDistance2dIn() const override;
++
++    double PlLos(double distance3D) const;
++    void WarnIfOutOfRange(double distance3D) const;
++
++    SubScenario m_subScenario{SL};
++};
++
+ } // namespace ns3
+ 
+ #endif /* THREE_GPP_PROPAGATION_LOSS_MODEL_H */
+diff --git a/src/propagation/test/three-gpp-propagation-loss-model-test-suite.cc b/src/propagation/test/three-gpp-propagation-loss-model-test-suite.cc
+index 4915a72..adc0975 100644
+--- a/src/propagation/test/three-gpp-propagation-loss-model-test-suite.cc
++++ b/src/propagation/test/three-gpp-propagation-loss-model-test-suite.cc
+@@ -13,6 +13,7 @@
+ #include "ns3/constant-velocity-mobility-model.h"
+ #include "ns3/double.h"
+ #include "ns3/log.h"
++#include "ns3/string.h"
+ #include "ns3/mobility-helper.h"
+ #include "ns3/simulator.h"
+ #include "ns3/test.h"
+@@ -1328,6 +1329,52 @@ ThreeGppShadowingTestCase::DoRun()
+     }
+ }
+ 
++
++/**
++ * Path loss for InF-SL at 3.5 GHz, d_3D = 10 m, shadowing off.
++ * TR 38.901 Table 7.4.1-1.
++ */
++class ThreeGppInfPropagationLossModelTestCase : public TestCase
++{
++  public:
++    ThreeGppInfPropagationLossModelTestCase()
++        : TestCase("Test for the ThreeGppInfPropagationLossModel class")
++    {
++    }
++
++  private:
++    void DoRun() override
++    {
++        NodeContainer nodes;
++        nodes.Create(2);
++        Ptr<MobilityModel> a = CreateObject<ConstantPositionMobilityModel>();
++        Ptr<MobilityModel> b = CreateObject<ConstantPositionMobilityModel>();
++        nodes.Get(0)->AggregateObject(a);
++        nodes.Get(1)->AggregateObject(b);
++        a->SetPosition(Vector(0.0, 0.0, 1.5));
++        b->SetPosition(Vector(10.0, 0.0, 1.5));
++
++        Ptr<ThreeGppInfPropagationLossModel> lossModel =
++            CreateObject<ThreeGppInfPropagationLossModel>();
++        lossModel->SetAttribute("ShadowingEnabled", BooleanValue(false));
++        lossModel->SetAttribute("Frequency", DoubleValue(3.5e9));
++        lossModel->SetAttribute("SubScenario", StringValue("SL"));
++        lossModel->SetChannelConditionModel(CreateObject<AlwaysLosChannelConditionModel>());
++        // PL_LOS = 31.84 + 21.50*log10(10) + 19*log10(3.5) = 63.6773
++        NS_TEST_EXPECT_MSG_EQ_TOL(lossModel->CalcRxPower(0.0, a, b),
++                                  -63.6773,
++                                  5e-2,
++                                  "InF-SL LOS");
++        lossModel->SetChannelConditionModel(CreateObject<NeverLosChannelConditionModel>());
++        // PL = max(33+25.5*log10(10)+20*log10(3.5), PL_LOS) = 69.3814
++        NS_TEST_EXPECT_MSG_EQ_TOL(lossModel->CalcRxPower(0.0, a, b),
++                                  -69.3814,
++                                  5e-2,
++                                  "InF-SL NLOS");
++        Simulator::Destroy();
++    }
++};
++
+ /**
+  * @ingroup propagation-tests
+  *
+@@ -1358,6 +1405,7 @@ ThreeGppPropagationLossModelsTestSuite::ThreeGppPropagationLossModelsTestSuite()
+     AddTestCase(new ThreeGppV2vUrbanPropagationLossModelTestCase, TestCase::Duration::QUICK);
+     AddTestCase(new ThreeGppV2vHighwayPropagationLossModelTestCase, TestCase::Duration::QUICK);
+     AddTestCase(new ThreeGppShadowingTestCase, TestCase::Duration::QUICK);
++    AddTestCase(new ThreeGppInfPropagationLossModelTestCase, TestCase::Duration::QUICK);
+ }
+ 
+ /// Static variable for test initialization
+diff --git a/src/spectrum/model/three-gpp-channel-model.cc b/src/spectrum/model/three-gpp-channel-model.cc
+index a265e04..8ca81b9 100644
+--- a/src/spectrum/model/three-gpp-channel-model.cc
++++ b/src/spectrum/model/three-gpp-channel-model.cc
+@@ -215,6 +215,22 @@ static constexpr std::array<std::array<double, 6>, 6> sqrtC_UMi_O2I = {{
+     {0, -0.23094, 0.16843, 0.808554, -0.220827, 0.464515},
+ }};
+ 
++
++/**
++ * Square-root correlation matrix for Indoor Factory LOS (TR 38.901 Table 7.5-6
++ * Part-3). Order [SF, K, DS, ASD, ASA, ZSD, ZSA]. The only non-zero
++ * cross-correlations are K-DS = -0.7 and K-ASD = -0.5.
++ */
++static constexpr std::array<std::array<double, 7>, 7> sqrtC_InF_LOS = {{
++    {1, 0, 0, 0, 0, 0, 0},
++    {0, 1, 0, 0, 0, 0, 0},
++    {0, -0.7, 0.714143, 0, 0, 0, 0},
++    {0, -0.5, -0.490098, 0.714006, 0, 0, 0},
++    {0, 0, 0, 0, 1, 0, 0},
++    {0, 0, 0, 0, 0, 1, 0},
++    {0, 0, 0, 0, 0, 0, 1},
++}};
++
+ /**
+  * The square root matrix for <em>Indoor-Office LOS</em>, which is generated
+  * using the Cholesky decomposition according to table 7.5-6 Part 2 and follows
+@@ -1160,6 +1176,7 @@ ThreeGppChannelModel::GetTypeId()
+             .AddAttribute(
+                 "Scenario",
+                 "The 3GPP scenario (RMa, UMa, UMi-StreetCanyon, InH-OfficeOpen, InH-OfficeMixed, "
++                "InF-SL, InF-DL, InF-SH, InF-DH, "
+                 "NTN-DenseUrban, NTN-Urban, NTN-Suburban, NTN-Rural)",
+                 StringValue("UMa"),
+                 MakeStringAccessor(&ThreeGppChannelModel::SetScenario,
+@@ -1202,6 +1219,16 @@ ThreeGppChannelModel::GetTypeId()
+                           DoubleValue(1),
+                           MakeDoubleAccessor(&ThreeGppChannelModel::m_blockerSpeed),
+                           MakeDoubleChecker<double>())
++            .AddAttribute("InfHallVolume",
++                          "InF hall volume in m^3. 0 uses the Table 7.8-7 hall for the scenario.",
++                          DoubleValue(0.0),
++                          MakeDoubleAccessor(&ThreeGppChannelModel::m_infHallVolume),
++                          MakeDoubleChecker<double>(0.0))
++            .AddAttribute("InfHallSurface",
++                          "InF hall surface area in m^2. 0 uses the Table 7.8-7 hall.",
++                          DoubleValue(0.0),
++                          MakeDoubleAccessor(&ThreeGppChannelModel::m_infHallSurface),
++                          MakeDoubleChecker<double>(0.0))
+             .AddAttribute("vScatt",
+                           "Maximum speed of the vehicle in the layout (see 3GPP TR 37.885 v15.3.0, "
+                           "Sec. 6.2.3)."
+@@ -1249,11 +1276,14 @@ ThreeGppChannelModel::SetScenario(const std::string& scenario)
+     NS_LOG_FUNCTION(this);
+     NS_ASSERT_MSG(scenario == "RMa" || scenario == "UMa" || scenario == "UMi-StreetCanyon" ||
+                       scenario == "InH-OfficeOpen" || scenario == "InH-OfficeMixed" ||
+-                      scenario == "V2V-Urban" || scenario == "V2V-Highway" ||
+-                      scenario == "NTN-DenseUrban" || scenario == "NTN-Urban" ||
+-                      scenario == "NTN-Suburban" || scenario == "NTN-Rural",
++                      scenario == "InF-SL" || scenario == "InF-DL" || scenario == "InF-SH" ||
++                      scenario == "InF-DH" || scenario == "V2V-Urban" ||
++                      scenario == "V2V-Highway" || scenario == "NTN-DenseUrban" ||
++                      scenario == "NTN-Urban" || scenario == "NTN-Suburban" ||
++                      scenario == "NTN-Rural",
+                   "Unknown scenario, choose between: RMa, UMa, UMi-StreetCanyon, "
+-                  "InH-OfficeOpen, InH-OfficeMixed, V2V-Urban, V2V-Highway, "
++                  "InH-OfficeOpen, InH-OfficeMixed, InF-SL, InF-DL, InF-SH, InF-DH, "
++                  "V2V-Urban, V2V-Highway, "
+                   "NTN-DenseUrban, NTN-Urban, NTN-Suburban or NTN-Rural");
+     m_scenario = scenario;
+ }
+@@ -1949,6 +1979,66 @@ ThreeGppChannelModel::GetThreeGppTable(Ptr<const MobilityModel> aMob,
+             NS_FATAL_ERROR("Unknown channel condition");
+         }
+     }
++    else if (m_scenario.rfind("InF-", 0) == 0)
++    {
++        NS_ASSERT_MSG(!o2i, "The indoor factory scenario does not support outdoor to indoor");
++        const bool smallHall = (m_scenario == "InF-SL" || m_scenario == "InF-DH");
++        const double volume = m_infHallVolume > 0.0 ? m_infHallVolume : (smallHall ? 72000.0 : 450000.0);
++        const double surface =
++            m_infHallSurface > 0.0 ? m_infHallSurface : (smallHall ? 18000.0 : 99000.0);
++        const double vs = volume / surface;
++        table3gpp->m_numOfCluster = 25;
++        table3gpp->m_raysPerCluster = 20;
++        table3gpp->m_uLgASD = los ? 1.56 : 1.57;
++        table3gpp->m_sigLgASD = los ? 0.25 : 0.20;
++        table3gpp->m_uLgASA = los ? (-0.18 * log10(1 + fcGHz) + 1.78) : 1.72;
++        table3gpp->m_sigLgASA = los ? (0.12 * log10(1 + fcGHz) + 0.2) : 0.30;
++        table3gpp->m_uLgZSA = los ? (-0.2 * log10(1 + fcGHz) + 1.5) : (-0.13 * log10(1 + fcGHz) + 1.45);
++        table3gpp->m_sigLgZSA = los ? 0.35 : 0.45;
++        table3gpp->m_uLgZSD = los ? 1.35 : 1.2;
++        table3gpp->m_sigLgZSD = los ? 0.35 : 0.55;
++        table3gpp->m_offsetZOD = 0;
++        table3gpp->m_cDS = 3.91e-9;
++        table3gpp->m_cASD = 5;
++        table3gpp->m_cASA = 8;
++        table3gpp->m_cZSA = 9;
++        table3gpp->m_uXpr = los ? 12 : 11;
++        table3gpp->m_sigXpr = 6;
++        table3gpp->m_perClusterRayDcorDistance = 10;
++        table3gpp->m_blockerDcorDistance = 10;
++        if (los)
++        {
++            table3gpp->m_uLgDS = log10(26.0 * vs + 14.0) - 9.35;
++            table3gpp->m_sigLgDS = 0.15;
++            table3gpp->m_uK = 7;
++            table3gpp->m_sigK = 8;
++            table3gpp->m_rTau = 2.7;
++            table3gpp->m_perClusterShadowingStd = 4;
++            for (uint8_t row = 0; row < 7; row++)
++            {
++                for (uint8_t column = 0; column < 7; column++)
++                {
++                    table3gpp->m_sqrtC[row][column] = sqrtC_InF_LOS[row][column];
++                }
++            }
++        }
++        else
++        {
++            table3gpp->m_uLgDS = log10(30.0 * vs + 32.0) - 9.44;
++            table3gpp->m_sigLgDS = 0.19;
++            table3gpp->m_uK = 0;
++            table3gpp->m_sigK = 0;
++            table3gpp->m_rTau = 3;
++            table3gpp->m_perClusterShadowingStd = 3;
++            for (uint8_t row = 0; row < 7; row++)
++            {
++                for (uint8_t column = 0; column < 7; column++)
++                {
++                    table3gpp->m_sqrtC[row][column] = (row == column && row < 6) ? 1.0 : 0.0;
++                }
++            }
++        }
++    }
+     else if (m_scenario.substr(0, 3) == "NTN")
+     {
+         std::string freqBand = fcGHz < 13 ? "S" : "Ka";
+diff --git a/src/spectrum/model/three-gpp-channel-model.h b/src/spectrum/model/three-gpp-channel-model.h
+index 621f6a6..33ab40a 100644
+--- a/src/spectrum/model/three-gpp-channel-model.h
++++ b/src/spectrum/model/three-gpp-channel-model.h
+@@ -1106,6 +1106,10 @@ class ThreeGppChannelModel : public MatrixBasedChannelModel
+     double m_frequency;
+     /// the 3GPP scenario
+     std::string m_scenario;
++    /// InF hall volume (m^3); 0 selects the calibration hall
++    double m_infHallVolume{0.0};
++    /// InF hall surface area (m^2); 0 selects the calibration hall
++    double m_infHallSurface{0.0};
+     /// the channel condition model
+     Ptr<ChannelConditionModel> m_channelConditionModel;
+     /// uniform random variable
+diff --git a/contrib/nr/helper/nr-channel-helper.cc b/contrib/nr/helper/nr-channel-helper.cc
+index a734eb5..7f8b562 100644
+--- a/contrib/nr/helper/nr-channel-helper.cc
++++ b/contrib/nr/helper/nr-channel-helper.cc
+@@ -7,6 +7,7 @@
+ #include "nr-channel-helper.h"
+ 
+ #include "ns3/buildings-channel-condition-model.h"
++#include "ns3/boolean.h"
+ #include "ns3/double.h"
+ #include "ns3/enum.h"
+ #include "ns3/multi-model-spectrum-channel.h"
+@@ -42,6 +43,14 @@ NrChannelHelper::GetTypeId()
+                           MakeEnumAccessor<NrChannelHelper::Scenario>(&NrChannelHelper::m_scenario),
+                           MakeEnumChecker(NrChannelHelper::Scenario::InF,
+                                           "InF",
++                                          NrChannelHelper::Scenario::InF_SL,
++                                          "InF-SL",
++                                          NrChannelHelper::Scenario::InF_DL,
++                                          "InF-DL",
++                                          NrChannelHelper::Scenario::InF_SH,
++                                          "InF-SH",
++                                          NrChannelHelper::Scenario::InF_DH,
++                                          "InF-DH",
+                                           NrChannelHelper::Scenario::InH,
+                                           "InH",
+                                           NrChannelHelper::Scenario::UMa,
+@@ -177,6 +186,40 @@ NrChannelHelper::ConfigureFactories(std::string Scenario,
+     m_pathLossModel.SetTypeId(std::get<0>(bandInfo));
+     m_spectrumModel.SetTypeId(std::get<1>(bandInfo));
+     m_channelConditionModel.SetTypeId(std::get<2>(bandInfo));
++    // Table 7.8-7 calibration clutter. Users can override these attributes afterwards.
++    switch (m_scenario)
++    {
++    case Scenario::InF_SL:
++        m_channelConditionModel.Set("ClutterDensity", DoubleValue(0.2));
++        m_channelConditionModel.Set("ClutterSize", DoubleValue(10.0));
++        m_channelConditionModel.Set("ClutterHeight", DoubleValue(2.0));
++        m_channelConditionModel.Set("BsAboveClutter", BooleanValue(false));
++        m_pathLossModel.Set("SubScenario", StringValue("SL"));
++        break;
++    case Scenario::InF_DL:
++        m_channelConditionModel.Set("ClutterDensity", DoubleValue(0.6));
++        m_channelConditionModel.Set("ClutterSize", DoubleValue(2.0));
++        m_channelConditionModel.Set("ClutterHeight", DoubleValue(6.0));
++        m_channelConditionModel.Set("BsAboveClutter", BooleanValue(false));
++        m_pathLossModel.Set("SubScenario", StringValue("DL"));
++        break;
++    case Scenario::InF_SH:
++        m_channelConditionModel.Set("ClutterDensity", DoubleValue(0.2));
++        m_channelConditionModel.Set("ClutterSize", DoubleValue(10.0));
++        m_channelConditionModel.Set("ClutterHeight", DoubleValue(2.0));
++        m_channelConditionModel.Set("BsAboveClutter", BooleanValue(true));
++        m_pathLossModel.Set("SubScenario", StringValue("SH"));
++        break;
++    case Scenario::InF_DH:
++        m_channelConditionModel.Set("ClutterDensity", DoubleValue(0.6));
++        m_channelConditionModel.Set("ClutterSize", DoubleValue(2.0));
++        m_channelConditionModel.Set("ClutterHeight", DoubleValue(6.0));
++        m_channelConditionModel.Set("BsAboveClutter", BooleanValue(true));
++        m_pathLossModel.Set("SubScenario", StringValue("DH"));
++        break;
++    default:
++        break;
++    }
+ }
+ 
+ void
+@@ -251,6 +294,10 @@ NrChannelHelper::GetScenario() const
+         {Scenario::UMi, "UMi-StreetCanyon"},
+         {Scenario::InH, "InH"},
+         {Scenario::InF, "InF"},
++        {Scenario::InF_SL, "InF-SL"},
++        {Scenario::InF_DL, "InF-DL"},
++        {Scenario::InF_SH, "InF-SH"},
++        {Scenario::InF_DH, "InF-DH"},
+         {Scenario::NTN_DenseUrban, "NTN-DenseUrban"},
+         {Scenario::NTN_Urban, "NTN-Urban"},
+         {Scenario::NTN_Suburban, "NTN-Suburban"},
+@@ -314,6 +361,18 @@ NrChannelHelper::GetPropagationTypeId() const
+         {{ChannelModel::ThreeGpp, Scenario::UMi},
+          {ThreeGppUmiStreetCanyonPropagationLossModel::GetTypeId(),
+           ThreeGppUmiStreetCanyonChannelConditionModel::GetTypeId()}},
++        {{ChannelModel::ThreeGpp, Scenario::InF_SL},
++         {ThreeGppInfPropagationLossModel::GetTypeId(),
++          ThreeGppInfChannelConditionModel::GetTypeId()}},
++        {{ChannelModel::ThreeGpp, Scenario::InF_DL},
++         {ThreeGppInfPropagationLossModel::GetTypeId(),
++          ThreeGppInfChannelConditionModel::GetTypeId()}},
++        {{ChannelModel::ThreeGpp, Scenario::InF_SH},
++         {ThreeGppInfPropagationLossModel::GetTypeId(),
++          ThreeGppInfChannelConditionModel::GetTypeId()}},
++        {{ChannelModel::ThreeGpp, Scenario::InF_DH},
++         {ThreeGppInfPropagationLossModel::GetTypeId(),
++          ThreeGppInfChannelConditionModel::GetTypeId()}},
+         {{ChannelModel::ThreeGpp, Scenario::NTN_DenseUrban},
+          {ThreeGppNTNDenseUrbanPropagationLossModel::GetTypeId(),
+           ThreeGppNTNDenseUrbanChannelConditionModel::GetTypeId()}},
+diff --git a/contrib/nr/helper/nr-channel-helper.h b/contrib/nr/helper/nr-channel-helper.h
+index 02d9436..8edee9d 100644
+--- a/contrib/nr/helper/nr-channel-helper.h
++++ b/contrib/nr/helper/nr-channel-helper.h
+@@ -35,6 +35,7 @@ namespace ns3
+  * The available features are:
+  *
+  * - Scenarios: RMa, UMa, InH-OfficeOpen, InH-OfficeMixed, V2V-Highway, V2V-Urban, UMi, InH, InF,
++ *   InF-SL, InF-DL, InF-SH, InF-DH,
+  *   NTN-DenseUrban, NTN-Urban, NTN-Suburban, NTN-Rural
+  *
+  * - Conditions: LOS, NLOS, Buildings, Default
+@@ -168,7 +169,11 @@ class NR_EXPORT NrChannelHelper : public Object
+         V2V_Urban,       //!< Vehicle-to-vehicle in an urban scenario
+         UMi,             //!< Urban Micro
+         InH,             //!< Indoor Hotspot
+-        InF,             //!< Indoor Factory
++        InF,             //!< Indoor Factory (NYU). 3GPP sub-scenarios are InF_SL..InF_DH
++        InF_SL,          //!< 3GPP Indoor Factory, sparse clutter, low BS
++        InF_DL,          //!< 3GPP Indoor Factory, dense clutter, low BS
++        InF_SH,          //!< 3GPP Indoor Factory, sparse clutter, high BS
++        InF_DH,          //!< 3GPP Indoor Factory, dense clutter, high BS
+         NTN_DenseUrban,  //!< Non-Terrestrial Network in a dense urban scenario
+         NTN_Urban,       //!< Non-Terrestrial Network in an urban scenario
+         NTN_Suburban,    //!< Non-Terrestrial Network in a suburban scenario
+@@ -239,6 +244,11 @@ class NR_EXPORT NrChannelHelper : public Object
+         {ChannelModel::ThreeGpp, Scenario::UMa},
+         // 3GPP-InH - OfficeMixed
+         {ChannelModel::ThreeGpp, Scenario::InH_OfficeMixed},
++        // 3GPP InF
++        {ChannelModel::ThreeGpp, Scenario::InF_SL},
++        {ChannelModel::ThreeGpp, Scenario::InF_DL},
++        {ChannelModel::ThreeGpp, Scenario::InF_SH},
++        {ChannelModel::ThreeGpp, Scenario::InF_DH},
+         // 3GPP-InH - OfficeOpen
+         {ChannelModel::ThreeGpp, Scenario::InH_OfficeOpen},
+         // 3GPP-V2V - Highway

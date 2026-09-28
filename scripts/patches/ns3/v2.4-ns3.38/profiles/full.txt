@@ -1,0 +1,3 @@
+# Default: every CORNET patch. Same result as the historical installer.
+ns3_lte_pdcp.patch
+nr_schedulers.patch

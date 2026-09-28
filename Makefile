@@ -1,6 +1,6 @@
-.PHONY: install install-python install-ns3 install-ns3-v24 install-ns3-v47 \
-        install-mininet install-gazebo verify validate validate-v24 validate-v47 \
-        docs docs-check compat-check test
+.PHONY: install install-python install-ns3 install-ns3-v24 install-ns3-v47 install-ns3-v51 \
+        install-mininet install-gazebo verify validate validate-v24 validate-v47 validate-v51 \
+        docs docs-check compat-check capability-check test
 
 # ── Install ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,10 @@ install-ns3-v24:
 install-ns3-v47:
 	NS3_DIR=~/ns-3-dev-v47 PATCH_SET=v4.2-ns3.47 bash scripts/install/install_ns3.sh
 
+## install-ns3-v51: Install NS-3 3.48 + NR v5.1 into ~/ns-3-dev-v51
+install-ns3-v51:
+	NS3_DIR=~/ns-3-dev-v51 PATCH_SET=v5.1-ns3.48 bash scripts/install/install_ns3.sh
+
 ## install-mininet: Install Mininet-WiFi + Docker
 install-mininet:
 	bash scripts/install/install_mininet.sh
@@ -42,6 +46,7 @@ verify:
 # Use 'make install-ns3-v24' if you want a named side-by-side ~/ns-3-dev-v24 directory.
 NS3_DIR_V24 ?= $(HOME)/ns-3-dev
 NS3_DIR_V47 ?= $(HOME)/ns-3-dev-v47
+NS3_DIR_V51 ?= $(HOME)/ns-3-dev-v51
 
 ## validate: Run pendulum_nr_control against both NS-3 versions (v2.4 + v4.2).
 ##            Skips v4.2 with a warning if ~/ns-3-dev-v47/.cornet-built is absent.
@@ -61,6 +66,11 @@ validate-v24:
 validate-v47:
 	NS3_DIR=$(NS3_DIR_V47) CORNET_NS3_TAG=ns3-v47 python -m cornet run tasks/pendulum_nr_control
 
+## validate-v51: Pendulum co-sim plus the two-gNB handover smoke, tag @ns3-v51
+validate-v51:
+	NS3_DIR=$(NS3_DIR_V51) CORNET_NS3_TAG=ns3-v51 python -m cornet run tasks/pendulum_nr_control
+	cd $(NS3_DIR_V51) && ./ns3 run handover_smoke
+
 # ── Compatibility check ───────────────────────────────────────────────────────
 
 ## compat-check: Run NS-3 compatibility pre-flight check (stable default: v2.4-ns3.38)
@@ -70,6 +80,10 @@ compat-check:
 ## compat-check-json: Same as compat-check but emit JSON
 compat-check-json:
 	python3 scripts/check_ns3_compat.py --ns3-dir "$${NS3_DIR:-$$HOME/ns-3-dev}" --patch-set "$${PATCH_SET:-v2.4-ns3.38}" --json
+
+## capability-check: Report requires_nr_capability levels for CONFIG (default: pendulum task)
+capability-check:
+	python3 scripts/check_capability.py --config "$${CONFIG:-tasks/pendulum_nr_control/config.yaml}"
 
 # ── Documentation ─────────────────────────────────────────────────────────────
 

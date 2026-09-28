@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from cornet.config.schema import (
+    CatalogProvenance,
     ContainerConfig,
     ExperimentConfig,
     MiddlewareConfig,
@@ -30,7 +31,10 @@ from cornet.config.schema import (
     ModelConfig,
     NetworkConfig,
     NodeConfig,
+    PopulationEntity,
     PoseConfig,
+    RadioSitesConfig,
+    SitePosition,
     RobotConfig,
     RobotEntry,
     ScenarioConfig,
@@ -48,6 +52,10 @@ MODELS = [
     ("MiddlewareConfig", MiddlewareConfig, "Co-simulation middleware layer settings."),
     ("MobilityConfig", MobilityConfig, "Live position update settings for PositionBroadcaster."),
     ("ScenarioConfig", ScenarioConfig, "5G/6G NS-3 scenario profile selection."),
+    ("RadioSitesConfig", RadioSitesConfig, "3GPP deployment preset (`network.radio_sites`)."),
+    ("SitePosition", SitePosition, "One explicit site for a custom deployment."),
+    ("PopulationEntity", PopulationEntity, "One background-population archetype."),
+    ("CatalogProvenance", CatalogProvenance, "Catalogue compiler provenance (`catalog`)."),
     ("RobotConfig", RobotConfig, "Robot simulation backend settings (`robot:` section)."),
     ("RobotEntry", RobotEntry, "A single robot to spawn in the simulation world."),
     ("ModelConfig", ModelConfig, "Robot model file reference."),
@@ -71,7 +79,7 @@ def _type_str(prop: dict, defs: dict) -> str:
     if t == "array":
         items = prop.get("items", {})
         return f"list[{_type_str(items, defs)}]"
-    if t == "object" and "additionalProperties" in prop:
+    if t == "object" and isinstance(prop.get("additionalProperties"), dict):
         val_t = _type_str(prop["additionalProperties"], defs)
         return f"dict[str, {val_t}]"
     if t == "null":

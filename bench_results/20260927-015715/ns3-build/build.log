@@ -1,0 +1,5 @@
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+bench_nr_multicell: uesPerCell=0; one silent UE created (HexagonalGridScenarioHelper requires at least one UE)
+CORNET_BENCH layout sites=1 cells=1 ues=1 trafficUes=0
+CORNET_BENCH done sim_s=0.05 realtime=0

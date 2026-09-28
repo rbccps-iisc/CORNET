@@ -1,0 +1,3 @@
+bench_nr_multicell: uesPerCell=0; one silent UE created (HexagonalGridScenarioHelper requires at least one UE)
+CORNET_BENCH layout sites=7 cells=21 ues=1 trafficUes=0
+CORNET_BENCH done sim_s=1 realtime=0

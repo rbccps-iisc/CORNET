@@ -1,0 +1,14 @@
+name: lte
+kind: networks
+version: "1"
+description: LTE multi-cell scratch with A3-RSRP handover.
+provides: {}
+requires:
+  root: false
+compatible:
+  robots: [pendulum, turtlebot3]
+  worlds: [open_plain, warehouse_small, warehouse_large]
+license:
+  spdx: project-owned
+  vendored: true
+  provenance: CORNET lte_multicell scratch
