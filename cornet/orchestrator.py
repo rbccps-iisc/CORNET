@@ -35,6 +35,14 @@ def _has_cap_net_admin() -> bool:
     return False
 
 
+def _is_ros_launch(path: Path) -> bool:
+    """Catalogue compile writes a metadata stub named launch.py. That is not a ROS launch."""
+    if path.suffix == ".xml":
+        return True
+    text = path.read_text(errors="replace")
+    return "generate_launch_description" in text
+
+
 def catalog_leaderboard_fields(config: UnifiedConfig) -> dict:
     """Copy ``catalog.standard`` onto a leaderboard entry when the run was compiled."""
     catalog = getattr(config, "catalog", None)
@@ -123,7 +131,10 @@ class Orchestrator:
         if ns3_tag:
             config.experiment.name = f"{config.experiment.name}@{ns3_tag}"
 
-        context = ExperimentContext(variant_id=config.experiment.name)
+        context = ExperimentContext(
+            variant_id=config.experiment.name,
+            task_dir=str(task_dir) if task_dir is not None else "",
+        )
         output_dir = Path(config.experiment.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -264,8 +275,9 @@ class Orchestrator:
         """Set robot.launch_file and robot.world from task_dir if not explicitly provided."""
         if config.robot.launch_file is None:
             for candidate in ("launch.py", "launch.xml"):
-                if (task_dir / candidate).exists():
-                    config.robot.launch_file = str(task_dir / candidate)
+                path = task_dir / candidate
+                if path.exists() and _is_ros_launch(path):
+                    config.robot.launch_file = str(path)
                     logger.debug("Auto-discovered launch file: %s", config.robot.launch_file)
                     break
         if config.robot.world is None:
@@ -320,7 +332,8 @@ class Orchestrator:
     def _load_plugins(self, config: UnifiedConfig) -> list[Plugin]:
         """Instantiate network and robot plugins from the registry."""
         plugins: list[Plugin] = []
-        for name in (config.network.plugin, config.robot.plugin):
+        # Gazebo first so /clock and model states exist before NS-3's realtime window.
+        for name in (config.robot.plugin, config.network.plugin):
             cls = _registry.get(name)
             plugins.append(cls())
         return plugins

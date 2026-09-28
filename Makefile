@@ -1,5 +1,5 @@
 .PHONY: install install-python install-ns3 install-ns3-v24 install-ns3-v47 install-ns3-v51 \
-        install-mininet install-gazebo verify validate validate-v24 validate-v47 validate-v51 \
+        install-mininet install-gazebo install-px4 actor-collisions verify validate validate-v24 validate-v47 validate-v51 \
         docs docs-check compat-check capability-check test
 
 # ── Install ──────────────────────────────────────────────────────────────────
@@ -31,9 +31,18 @@ install-ns3-v51:
 install-mininet:
 	bash scripts/install/install_mininet.sh
 
-## install-gazebo: Install Gazebo Classic 11 + ROS 2 Humble
+## install-gazebo: Install Gazebo Classic 11 + ROS 2 Humble + TurtleBot3
 install-gazebo:
 	bash scripts/install/install_gazebo_ros2.sh
+
+## install-px4: PX4 Classic iris SITL at the smoked checkout (not part of plain `make install`)
+install-px4:
+	bash scripts/install/install_px4.sh
+
+## actor-collisions: Build the Gazebo 11 actor-collisions example plugin
+actor-collisions:
+	cmake -S scripts/gazebo/actor_collisions -B scripts/gazebo/actor_collisions/build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+	cmake --build scripts/gazebo/actor_collisions/build
 
 ## verify: Check all components are correctly installed
 verify:

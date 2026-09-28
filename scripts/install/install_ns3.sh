@@ -250,9 +250,9 @@ if [[ -d "$SCRATCH_SRC" ]]; then
     if [[ "$CC_COUNT" -gt 0 ]]; then
         echo "==> Copying $CC_COUNT scratch script(s) from $SCRATCH_SRC to $NS3_DIR/scratch/..."
         cp "$SCRATCH_SRC"/*.cc "$NS3_DIR/scratch/"
-        if [[ -f "$REPO_ROOT/scripts/ns3/scratch/cornet_base.h" ]]; then
-            cp "$REPO_ROOT/scripts/ns3/scratch/cornet_base.h" "$NS3_DIR/scratch/"
-            echo "    Copied: cornet_base.h"
+        if compgen -G "$REPO_ROOT/scripts/ns3/scratch/*.h" > /dev/null; then
+            cp "$REPO_ROOT/scripts/ns3/scratch/"*.h "$NS3_DIR/scratch/"
+            echo "    Copied scratch headers"
         fi
         echo "    Copied: $(find "$SCRATCH_SRC" -maxdepth 1 -name '*.cc' -exec basename {} \; | tr '\n' ' ')"
     else

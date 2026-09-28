@@ -30,3 +30,5 @@ class ExperimentContext:
 
     # Variant ID for sweep runs (e.g. "numerology=2_bandwidth=40"); "default" otherwise
     variant_id: str = "default"
+    # Task directory. Relative catalogue paths such as layout.json resolve from here.
+    task_dir: str = ""

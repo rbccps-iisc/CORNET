@@ -77,11 +77,23 @@ class GazeboPlugin(Plugin):
         logger.info("Launching Gazebo via: ros2 launch %s", self._launch_path)
         env = os.environ.copy()
         robot = getattr(cfg, "robot", None)
-        model_paths = [path for path in (getattr(robot, "model_paths", None) or []) if path]
+        repo_root = Path(__file__).resolve().parents[3]
+        model_paths = []
+        for path in getattr(robot, "model_paths", None) or []:
+            if not path:
+                continue
+            candidate = Path(path)
+            if not candidate.is_absolute():
+                candidate = repo_root / path
+            model_paths.append(str(candidate))
         if model_paths:
             existing = env.get("GAZEBO_MODEL_PATH", "")
             prefix = os.pathsep.join(model_paths)
             env["GAZEBO_MODEL_PATH"] = f"{prefix}{os.pathsep}{existing}" if existing else prefix
+        plugin_dir = Path(__file__).resolve().parents[3] / "scripts" / "gazebo" / "actor_collisions" / "build"
+        if plugin_dir.is_dir():
+            existing = env.get("GAZEBO_PLUGIN_PATH", "")
+            env["GAZEBO_PLUGIN_PATH"] = f"{plugin_dir}{os.pathsep}{existing}" if existing else str(plugin_dir)
         self._launch_proc = subprocess.Popen(
             ["ros2", "launch", str(self._launch_path)],
             stdout=subprocess.PIPE,

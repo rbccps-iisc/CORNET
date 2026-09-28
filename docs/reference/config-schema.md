@@ -160,6 +160,25 @@ One background-population archetype.
 | `archetype` | string | — | ✓ | Background entity. Walkers have a Gazebo body; phone users also have an NS-3 UE. |
 | `count` | integer | `1` |  | How many entities of this archetype to place. |
 | `zone` | string | null | null |  | World zone name used for waypoint placement. |
+| `motion` | [PopulationMotion](#populationmotion) | null | null |  | Walker speed range. Device-only archetypes ignore it. |
+| `traffic` | [PopulationTraffic](#populationtraffic) | null | null |  | Offered load for archetypes that have a network device. |
+| `channel` | integer | null | null |  | WiFi channel for wifi_neighbour. Matching the task AP channel shares one NS-3 channel. |
+
+## PopulationMotion
+
+Walker speed range for seeded waypoint times.
+
+| Field | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `speed_mps` | list[number] | — |  | Walker speed range in metres per second. Waypoint times use a seed draw from this range. |
+
+## PopulationTraffic
+
+Traffic profile for a population device.
+
+| Field | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `profile` | string | — | ✓ | NR and LTE use a 5G-LENA NGMN/3GPP generator. WiFi uses an NS-3 application. |
 
 ## CatalogProvenance
 

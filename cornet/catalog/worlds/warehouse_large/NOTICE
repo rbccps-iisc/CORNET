@@ -1,0 +1,16 @@
+ARTPARK networked warehouse, extended to the TR 38.901 InF small hall
+(120 m x 60 m x 10 m).
+
+Authors of the upstream world: Kavish Shah and sadgun. An upstream LICENSE
+has been requested and is not in the source tree. This pack is project-owned.
+
+Models whose directory names start with aws_robomaker_ are copies of the
+AWS RoboMaker small warehouse and stay under that project's MIT-0 LICENSE
+(see warehouse_small/LICENSE). Static human meshes were not imported;
+population actors replace them.
+
+The upstream prop cloud was longer on y than the 60 m hall, so every prop
+was rotated 90 degrees about z and then translated so the cloud sits inside
+the hall. A box floor, four walls, and a roof (inf_floor, inf_wall_*, inf_roof)
+are the hall shell. The upstream floor mesh is left with the props; its
+Collada unit is inches.

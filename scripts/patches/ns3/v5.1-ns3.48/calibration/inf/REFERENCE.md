@@ -75,6 +75,8 @@ Volume and surface (walls + floor + ceiling) for the delay-spread formula:
 | Delay scaling `r_τ` | 2.7 | 3 |
 | XPR `μ` / `σ` | 12 / 6 | 11 / 6 |
 | Clusters / rays | 25 / 20 | 25 / 20 |
+| C_φ NLOS (Table 7.5-6, N=25) | 1.358 | 1.358 |
+| C_θ NLOS (Table 7.5-4, N=25) | 1.282 | 1.282 |
 | Cluster ASD / ASA / ZSA (deg) | 5 / 8 / 9 | 5 / 8 / 9 |
 | Cluster DS | N/A (ns-3 uses 3.91 ns) | N/A (3.91 ns) |
 | Per-cluster shadowing std (dB) | 4 | 3 |

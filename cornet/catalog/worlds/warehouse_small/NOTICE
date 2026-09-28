@@ -1,0 +1,11 @@
+AWS RoboMaker small warehouse, vendored from
+https://github.com/aws-robotics/aws-robomaker-small-warehouse-world
+
+The LICENSE file in this directory is the MIT-0 grant shipped with that
+repository (Copyright Amazon.com, Inc. or its affiliates). package.xml in the
+upstream tree names Apache-2.0; the LICENSE file is the text that applies to
+the copied worlds and models.
+
+Roof and no-roof worlds are world.sdf and no_roof.sdf. Spawn slots are the
+open aisle around the origin, inside the nav-map bounds (map.yaml origin
+[-10, -20.24], resolution 0.02 m).

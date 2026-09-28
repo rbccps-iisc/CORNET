@@ -457,6 +457,16 @@ index a265e04..8ca81b9 100644
  /**
   * The square root matrix for <em>Indoor-Office LOS</em>, which is generated
   * using the Cholesky decomposition according to table 7.5-6 Part 2 and follows
+@@ -1095,3 +1111,4 @@ static const std::unordered_map<int, double> cNlosTablePhi = {
+     {19, 1.273},
+     {20, 1.289},
++    {25, 1.358}, // InF, Table 7.5-6, Ramos encoding
+ };
+@@ -1111,3 +1128,4 @@ static const std::unordered_map<int, double> cNlosTableTheta = {
+     {19, 1.184},
+     {20, 1.178},
++    {25, 1.282}, // InF, Table 7.5-4, Ramos encoding
+ };
 @@ -1160,6 +1176,7 @@ ThreeGppChannelModel::GetTypeId()
              .AddAttribute(
                  "Scenario",

@@ -1,7 +1,7 @@
 name: warehouse_small
 kind: worlds
 version: "1"
-description: AWS RoboMaker small warehouse, about 12 x 19 m. Assets are not vendored yet.
+description: AWS RoboMaker small warehouse, about 12 x 19 m, with roof and no-roof worlds.
 provides: {}
 requires:
   gazebo: classic-11
@@ -10,14 +10,48 @@ compatible:
   networks: [nr, lte, wifi_ns3]
 license:
   spdx: MIT-0
-  vendored: false
-  provenance: ~/catkin_ws/src/aws-robomaker-small-warehouse-world (LICENSE MIT-0, package.xml Apache-2.0)
+  vendored: true
+  provenance: aws-robotics/aws-robomaker-small-warehouse-world (LICENSE MIT-0; package.xml says Apache-2.0)
   source_url: https://github.com/aws-robotics/aws-robomaker-small-warehouse-world
 bounds:
   x_min: -6
   x_max: 6
   y_min: -9.5
   y_max: 9.5
+origin:
+  x: 0
+  y: 0
+  z: 0
+spawn_slots:
+  - name: origin
+    x: 0
+    y: 0
+    z: 0
+  - name: aisle_north
+    x: 0
+    y: 3
+    z: 0
+  - name: aisle_south
+    x: 0
+    y: -3
+    z: 0
+zones:
+  - name: aisle
+    x_min: -3
+    x_max: 3
+    y_min: -8
+    y_max: 6
+  - name: open_floor
+    x_min: -6
+    x_max: 6
+    y_min: -9.5
+    y_max: 9.5
+mounting_points:
+  - name: centre
+    x: 0
+    y: 0
+    z: 3
+    note: single AP or gNB under the roof; the hall is too small for InH or InF grids
 supported_deployments:
   - single_cell
   - custom
@@ -28,6 +62,8 @@ indoor_of:
   - 3gpp_umi
   - 3gpp_uma
   - 3gpp_rma
+model_paths:
+  - cornet/catalog/worlds/warehouse_small/models
 roof: true
 roof_variants:
   - roof

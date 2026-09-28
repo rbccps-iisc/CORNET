@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
+import os
+import random
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,9 @@ from cornet.config.loader import load_unified
 
 _PORT_START = 20000
 _PORT_END = 29999
+_ACTOR_PLUGIN = (
+    Path(__file__).resolve().parents[2] / "scripts" / "gazebo" / "actor_collisions" / "build" / "libActorCollisionsPlugin.so"
+)
 
 
 def _flow_ports(robot, robot_count: int) -> list[int]:
@@ -51,6 +57,7 @@ def compose(spec: ScenarioSpec, task_dir: Path, *, lane: str | None = None) -> P
     )
     if reasons:
         raise ValueError("incompatible scenario: " + "; ".join(reasons))
+    _require_actor_plugin(spec)
 
     robot = load_pack("robots", spec.robot)
     world = load_pack("worlds", spec.world)
@@ -83,6 +90,7 @@ def compose(spec: ScenarioSpec, task_dir: Path, *, lane: str | None = None) -> P
             )
             port_index += 1
 
+    actor_xml, devices = _population(spec, world)
     layout = {
         "deployment": spec.radio_sites.deployment,
         "standard": standard,
@@ -93,6 +101,12 @@ def compose(spec: ScenarioSpec, task_dir: Path, *, lane: str | None = None) -> P
         "bs_height_m": derived.get("bs_height_m"),
         "wraparound": spec.radio_sites.wraparound,
         "sectors": spec.radio_sites.sectors,
+        "blockage": spec.radio_sites.blockage == "model_a",
+        "indoor": spec.radio_sites.indoor_building,
+        "channel_update_ms": 100 if moving else 0,
+        "background_ues_per_cell": spec.radio_sites.background_ues_per_cell,
+        "num_non_self_blocking": _non_self_blocking(spec, world),
+        "wifi_channel": 36,
         "origin": {"x": origin_x, "y": origin_y},
         "sites": sites,
         "robots": [
@@ -106,12 +120,24 @@ def compose(spec: ScenarioSpec, task_dir: Path, *, lane: str | None = None) -> P
         ],
         "flows": flows,
         "seed": spec.seed,
+        "devices": devices,
     }
     (task_dir / "layout.json").write_text(json.dumps(layout, indent=2, sort_keys=True) + "\n")
 
-    config = _config(spec, nodes, network, world, robot, moving, standard, channel, caveat)
+    config = _config(
+        spec,
+        nodes,
+        network,
+        world,
+        robot,
+        moving,
+        standard,
+        channel,
+        caveat,
+        "layout.json",
+    )
     (task_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
-    _write_world(task_dir, world, sites, spec, robot.physics_step_s or 0.001)
+    _write_world(task_dir, world, sites, actor_xml, robot.physics_step_s or 0.001, spec.world_variant)
     _write_launch(task_dir, spec, robot)
     _write_eval(task_dir, robot)
     (task_dir / "relays.yaml").write_text(yaml.safe_dump({"flows": flows, "controller_placement": spec.controller_placement}, sort_keys=False))
@@ -154,10 +180,11 @@ def _config(
     standard: bool,
     channel: str,
     caveat: str | None,
+    layout_file: str,
 ) -> dict[str, Any]:
     script = {"nr": "nr_multicell-default", "lte": "lte_multicell-default", "wifi_ns3": "wifi_basic-default"}[spec.network]
     radio = spec.radio_sites
-    model_file = Path(robot.model_path).name if robot.model_path else "robot.urdf"
+    model_type, model_path, extra_model_paths = _robot_model(robot)
     return {
         "_schema": "unified-v1",
         "catalog": {
@@ -172,6 +199,7 @@ def _config(
             "plugin": "ns3",
             "type": "ns3",
             "simulation_script": script,
+            "layoutFile": layout_file,
             "nodes": nodes,
             "middleware": {
                 "enabled": False,
@@ -193,11 +221,11 @@ def _config(
         "robot": {
             "plugin": "gazebo",
             "world": "world.sdf",
-            "model_paths": world.model_paths,
+            "model_paths": list(world.model_paths) + extra_model_paths,
             "robots": [
                 {
                     "name": f"{spec.robot}{index}",
-                    "model": {"type": "urdf", "path": f"models/{model_file}"},
+                    "model": {"type": model_type, "path": model_path},
                     "pose": {"x": 0.0, "y": float(index), "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
                     "ros_namespace": f"/{spec.robot}{index}",
                 }
@@ -224,6 +252,16 @@ def _required(channel: str, radio, caveat: str | None) -> list[str]:
     return names
 
 
+def _robot_model(robot) -> tuple[str, str, list[str]]:
+    """Return Gazebo model type, path, and extra model search directories."""
+    installed = Path("/opt/ros/humble/share/turtlebot3_gazebo/models/turtlebot3_burger/model.sdf")
+    if not robot.model_path and robot.name == "turtlebot3" and installed.is_file():
+        return "sdf", str(installed), [str(installed.parent.parent)]
+    model_file = Path(robot.model_path).name if robot.model_path else "robot.urdf"
+    kind = "sdf" if model_file.endswith(".sdf") else "urdf"
+    return kind, f"models/{model_file}", []
+
+
 def _copy_model(task_dir: Path, robot) -> None:
     if not robot.model_path:
         return
@@ -237,40 +275,114 @@ def _copy_model(task_dir: Path, robot) -> None:
     dest.write_bytes(src.read_bytes())
 
 
-def _actor_blocks(spec: ScenarioSpec, world) -> list[str]:
-    """Seeded walker trajectories inside a named zone. Collision plugin is separate."""
-    import random
+def _require_actor_plugin(spec: ScenarioSpec) -> None:
+    if not any(item.get("archetype") in {"walker", "walker_with_phone"} for item in spec.population):
+        return
+    path = Path(os.environ.get("CORNET_ACTOR_PLUGIN", str(_ACTOR_PLUGIN)))
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"actor-collisions plugin not found at {path}; build target: make actor-collisions"
+        )
 
-    bounds = world.bounds or {"x_min": -5, "x_max": 5, "y_min": -5, "y_max": 5}
+
+def _non_self_blocking(spec: ScenarioSpec, world) -> int | None:
+    """Non-standard density map. Model A itself does not depend on population."""
+    if spec.radio_sites.non_self_blockers != "from_density":
+        return None
+    bodies = sum(
+        int(item.get("count") or 1)
+        for item in spec.population
+        if item.get("archetype") in {"walker", "walker_with_phone"}
+    )
+    bounds = world.bounds or {"x_min": 0.0, "x_max": 1.0, "y_min": 0.0, "y_max": 1.0}
+    area = max(
+        (float(bounds["x_max"]) - float(bounds["x_min"])) * (float(bounds["y_max"]) - float(bounds["y_min"])),
+        1.0,
+    )
+    scaled = int(round((bodies / area) / 0.01 * 4))
+    return min(10, max(1, scaled))
+
+
+def _zone_box(world, name: str | None) -> dict[str, float]:
+    bounds = world.bounds or {"x_min": -5.0, "x_max": 5.0, "y_min": -5.0, "y_max": 5.0}
     zones = {zone.get("name"): zone for zone in world.zones}
+    zone = zones.get(name) if name else None
+    return zone or bounds
+
+
+def _population(spec: ScenarioSpec, world) -> tuple[list[str], list[dict[str, Any]]]:
+    """Seeded actors and the NS-3 devices bound to them. Same seed, same trajectories."""
     rng = random.Random(spec.seed)
-    blocks = []
+    actors: list[str] = []
+    devices: list[dict[str, Any]] = []
     index = 0
     for item in spec.population:
-        if item.get("archetype") not in {"walker", "walker_with_phone"}:
-            continue
-        zone = zones.get(item.get("zone")) or {
-            "x_min": bounds["x_min"],
-            "x_max": bounds["x_max"],
-            "y_min": bounds["y_min"],
-            "y_max": bounds["y_max"],
-        }
-        for _copy in range(int(item.get("count") or 1)):
-            points = []
-            for step in range(3):
-                x = rng.uniform(float(zone["x_min"]), float(zone["x_max"]))
-                y = rng.uniform(float(zone["y_min"]), float(zone["y_max"]))
-                points.append(f"<waypoint><time>{step * 5}</time><pose>{x:.3f} {y:.3f} 0 0 0 0</pose></waypoint>")
-            blocks.append(
-                f'<actor name="walker{index}"><skin><filename>walk.dae</filename></skin>'
-                f"<script><loop>true</loop><trajectory id=\"0\" type=\"walking\">{''.join(points)}</trajectory></script></actor>"
-            )
+        archetype = item.get("archetype")
+        zone = _zone_box(world, item.get("zone"))
+        traffic = (item.get("traffic") or {}).get("profile") or ""
+        channel = item.get("channel")
+        speeds = (item.get("motion") or {}).get("speed_mps") or [1.0, 1.0]
+        count = int(item.get("count") or 1)
+        for _copy in range(count):
+            speed = max(0.1, rng.uniform(float(speeds[0]), float(speeds[-1])))
+            samples = [
+                (
+                    rng.uniform(float(zone["x_min"]), float(zone["x_max"])),
+                    rng.uniform(float(zone["y_min"]), float(zone["y_max"])),
+                )
+                for _step in range(3)
+            ]
+            if archetype in {"walker", "walker_with_phone"}:
+                elapsed = 0.0
+                waypoints = []
+                previous = samples[0]
+                for step, (x, y) in enumerate(samples):
+                    if step:
+                        elapsed += math.hypot(x - previous[0], y - previous[1]) / speed
+                    previous = (x, y)
+                    waypoints.append(
+                        f"<waypoint><time>{elapsed:.3f}</time><pose>{x:.3f} {y:.3f} 0 0 0 0</pose></waypoint>"
+                    )
+                actors.append(
+                    f'<actor name="walker{index}">'
+                    f'<plugin name="actor_collisions_walker{index}" filename="libActorCollisionsPlugin.so"/>'
+                    f"<skin><filename>walk.dae</filename></skin>"
+                    f'<animation name="walking"><filename>walk.dae</filename><interpolate_x>true</interpolate_x></animation>'
+                    f"<script><loop>true</loop><trajectory id=\"0\" type=\"walking\">{''.join(waypoints)}</trajectory></script>"
+                    f"</actor>"
+                )
+            x0, y0 = samples[0]
+            if archetype == "walker_with_phone":
+                devices.append(
+                    {"name": f"walker{index}", "kind": archetype, "x": round(x0, 3), "y": round(y0, 3), "z": 1.5, "traffic": traffic, "channel": channel, "mobile": True}
+                )
+            elif archetype in {"static_user", "iot_sensor", "wifi_neighbour"}:
+                devices.append(
+                    {
+                        "name": f"{'neighbour' if archetype == 'wifi_neighbour' else archetype}{index}",
+                        "kind": archetype,
+                        "x": round(x0, 3),
+                        "y": round(y0, 3),
+                        "z": 1.5,
+                        "traffic": traffic or ("periodic_iot" if archetype == "iot_sensor" else ""),
+                        "channel": 36 if channel is None and archetype == "wifi_neighbour" else channel,
+                        "mobile": False,
+                    }
+                )
             index += 1
-    return blocks
+    return actors, devices
 
 
-def _write_world(task_dir: Path, world, sites: list[dict[str, float]], spec: ScenarioSpec, step_s: float) -> None:
-    source = pack_dir("worlds", world.name) / "world.sdf"
+def _write_world(
+    task_dir: Path,
+    world,
+    sites: list[dict[str, float]],
+    actors: list[str],
+    step_s: float,
+    variant: str | None,
+) -> None:
+    root = pack_dir("worlds", world.name)
+    source = root / ("no_roof.sdf" if variant == "no_roof" and (root / "no_roof.sdf").is_file() else "world.sdf")
     if source.is_file():
         text = source.read_text()
     else:
@@ -289,8 +401,11 @@ def _write_world(task_dir: Path, world, sites: list[dict[str, float]], spec: Sce
                 f'<link name="link"><collision name="c"><geometry><box><size>0.3 0.3 0.8</size></box></geometry></collision>'
                 f'<visual name="v"><geometry><box><size>0.3 0.3 0.8</size></box></geometry></visual></link></model>'
             )
-    includes.append(f"  <physics type=\"ode\"><max_step_size>{step_s}</max_step_size><real_time_update_rate>0</real_time_update_rate></physics>")
-    includes.extend(_actor_blocks(spec, world))
+    if "<physics" not in text:
+        includes.append(
+            f"  <physics type=\"ode\"><max_step_size>{step_s}</max_step_size><real_time_update_rate>0</real_time_update_rate></physics>"
+        )
+    includes.extend(actors)
     if "</world>" in text:
         text = text.replace("</world>", "\n".join(includes) + "\n</world>", 1)
     (task_dir / "world.sdf").write_text(text)

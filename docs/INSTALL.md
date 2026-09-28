@@ -14,7 +14,8 @@ make install-ns3      # NS-3 3.38 + NR v2.4 + CORNET patches (stable default)
 make install-ns3-v47  # NS-3 3.47 + NR v4.2 (explicit stepping stone)
 make install-ns3-v51  # NS-3 3.48 + NR v5.1 (explicit; pins in scripts/patches/ns3/v5.1-ns3.48/README.md)
 make install-mininet  # Mininet-WiFi + Docker
-make install-gazebo   # ROS 2 Humble + Gazebo Classic 11
+make install-gazebo   # ROS 2 Humble + Gazebo Classic 11 + TurtleBot3
+make install-px4      # PX4 Classic iris SITL (aerial pack; not part of `make install`)
 
 # Verify all components are functional:
 make verify
@@ -127,12 +128,21 @@ source /opt/ros/humble/setup.bash
 
 The `gazebo` plugin calls `ros2 launch` internally; ROS 2 must be sourced before running.
 
-Gazebo load benchmarks (`python -m cornet bench gazebo`) spawn TurtleBot3 models. Install the Humble packages and source ROS 2 before those runs:
+`make install-gazebo` also installs the TurtleBot3 burger model that catalogue compose uses:
+
+`/opt/ros/humble/share/turtlebot3_gazebo/models/turtlebot3_burger/model.sdf`
+
+Gazebo load benchmarks (`python -m cornet bench gazebo`) spawn that model. Source ROS 2 before those runs.
+
+### PX4 Classic iris (for the `px4_x500` catalogue pack)
+
+`make install` does not build PX4. After Gazebo is installed:
 
 ```bash
-sudo apt-get install -y ros-humble-turtlebot3-gazebo ros-humble-turtlebot3-description
-source /opt/ros/humble/setup.bash
+make install-px4
 ```
+
+The script clones `~/simulation/PX4-Autopilot` at `36006b6d703a421175587d386a535bbdf8eb0a9c` with the Gazebo Classic submodule `5b6966ed572a02e8273f446acb504a45a841ca53`, then runs `DONT_RUN=1 make px4_sitl gazebo-classic`. The airframe is iris. It also installs `libgz-transport13`, `libgz-msgs10`, and `libgz-utils2` from the OSRF Gazebo apt repository, because that binary links them. An existing checkout at a different commit is left in place.
 
 Warehouse worlds are optional. Set `CORNET_SMALL_WAREHOUSE` and `CORNET_LARGE_WAREHOUSE` to a world file or package directory. When unset, the suite looks at the known local AWS and ARTPARK checkouts, then at vendored `cornet/catalog/worlds/` paths. Missing worlds are skipped.
 

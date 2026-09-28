@@ -1,5 +1,7 @@
 cornet/catalog/**/*.dae filter=lfs diff=lfs merge=lfs -text
+cornet/catalog/**/*.DAE filter=lfs diff=lfs merge=lfs -text
 cornet/catalog/**/*.stl filter=lfs diff=lfs merge=lfs -text
 cornet/catalog/**/*.png filter=lfs diff=lfs merge=lfs -text
+cornet/catalog/**/*.PNG filter=lfs diff=lfs merge=lfs -text
 cornet/catalog/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 cornet/catalog/**/*.jpeg filter=lfs diff=lfs merge=lfs -text

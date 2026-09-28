@@ -80,6 +80,14 @@ def check_compat(
     if population and any(item.get("archetype") == "walker_with_phone" for item in population):
         if capability_level("cornet_tap_bridge_contract", lane) is None and lane == "unknown":
             reasons.append("walker_with_phone needs a detected NS-3 lane for the position feed")
+    if population:
+        zone_names = {zone.get("name") for zone in world_pack.zones}
+        for item in population:
+            zone = item.get("zone")
+            if zone and zone not in zone_names:
+                reasons.append(f"unknown zone {zone}")
+            if item.get("archetype") == "wifi_neighbour" and network != "wifi_ns3":
+                reasons.append("wifi_neighbour requires the wifi_ns3 pack")
 
     for name in needed:
         if capability_level(name, lane) is None:

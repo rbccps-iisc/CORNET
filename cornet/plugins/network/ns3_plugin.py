@@ -29,6 +29,9 @@ _TIMING_SCRIPTS = {
     "remote_robot_control-default",
     "scratch_template-default",
     "bench_nr_multicell-default",
+    "nr_multicell-default",
+    "lte_multicell-default",
+    "wifi_basic-default",
 }
 
 
@@ -350,9 +353,19 @@ class Ns3Plugin(Plugin):
         # ── Build NS-3 command ────────────────────────────────────────
         args = [str(ns3_dir / "ns3"), "run", script, "--"]
         for key, val in extra.items():
-            if key in {"simulation_script", "timing_log"}:
+            if key in {"simulation_script", "timing_log", "layoutFile"}:
                 continue
             args.append(f"--{key}={val}")
+        if not any(arg.startswith("--simTime=") for arg in args):
+            args.append(f"--simTime={cfg.experiment.duration}")
+
+        layout_file = extra.get("layoutFile")
+        if layout_file:
+            layout_path = Path(str(layout_file))
+            if not layout_path.is_absolute():
+                base = Path(getattr(self._context, "task_dir", "") or ".")
+                layout_path = (base / layout_path).resolve()
+            args.append(f"--layoutFile={layout_path}")
 
         forward_timing = script_supports_timing(script) or bool(getattr(cfg.network, "timing_log", False))
         if forward_timing:

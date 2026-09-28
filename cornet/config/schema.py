@@ -173,12 +173,33 @@ class RadioSitesConfig(BaseModel):
         return self
 
 
+class PopulationMotion(BaseModel):
+    speed_mps: list[float] = Field(
+        default_factory=lambda: [1.0, 1.0],
+        description="Walker speed range in metres per second. Waypoint times use a seed draw from this range.",
+    )
+    model_config = ConfigDict(extra="forbid")
+
+
+class PopulationTraffic(BaseModel):
+    profile: Literal["ftp", "video", "voip", "gaming", "xr", "full_buffer", "periodic_iot"] = Field(
+        description="NR and LTE use a 5G-LENA NGMN/3GPP generator. WiFi uses an NS-3 application."
+    )
+    model_config = ConfigDict(extra="forbid")
+
+
 class PopulationEntity(BaseModel):
     archetype: Literal["walker", "walker_with_phone", "static_user", "iot_sensor", "wifi_neighbour"] = Field(
         description="Background entity. Walkers have a Gazebo body; phone users also have an NS-3 UE."
     )
     count: int = Field(default=1, description="How many entities of this archetype to place.")
     zone: str | None = Field(default=None, description="World zone name used for waypoint placement.")
+    motion: PopulationMotion | None = Field(default=None, description="Walker speed range. Device-only archetypes ignore it.")
+    traffic: PopulationTraffic | None = Field(default=None, description="Offered load for archetypes that have a network device.")
+    channel: int | None = Field(
+        default=None,
+        description="WiFi channel for wifi_neighbour. Matching the task AP channel shares one NS-3 channel.",
+    )
     model_config = ConfigDict(extra="forbid")
 
 

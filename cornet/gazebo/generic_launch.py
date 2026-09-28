@@ -92,6 +92,7 @@ def generate(config: "RobotConfig", task_dir: Path) -> Path:
         "    return LaunchDescription([",
         "        ExecuteProcess(",
         "            cmd=[\"gzserver\", \"--verbose\", \"-s\", \"libgazebo_ros_init.so\",",
+        "                 \"-s\", \"libgazebo_ros_factory.so\",",
         f"                 \"{world_arg}\"],",
         "            output=\"screen\",",
         "        ),",

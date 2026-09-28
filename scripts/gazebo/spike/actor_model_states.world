@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!-- Spike for catalogue task 1.5: does walker0 appear in gazebo_ros_state model_states? -->
+<sdf version="1.6">
+  <world name="actor_spike">
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>5.0</update_rate>
+    </plugin>
+    <include><uri>model://ground_plane</uri></include>
+    <include><uri>model://sun</uri></include>
+    <model name="box">
+      <pose>1 0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="c"><geometry><box><size>1 1 1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1 1 1</size></box></geometry></visual>
+      </link>
+    </model>
+    <actor name="walker0">
+      <pose>0 2 0 0 0 0</pose>
+      <skin>
+        <filename>walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walking">
+        <filename>walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0</time><pose>0 2 0 0 0 0</pose></waypoint>
+          <waypoint><time>4</time><pose>2 2 0 0 0 0</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+  </world>
+</sdf>

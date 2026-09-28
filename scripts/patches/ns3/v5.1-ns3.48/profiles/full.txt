@@ -4,3 +4,4 @@ nr_pdcp_aoi.patch
 nr_schedulers.patch
 ns3_channel_inf.patch
 ns3_channel_aerial_36777.patch
+ns3_wraparound_channel_matrix.patch

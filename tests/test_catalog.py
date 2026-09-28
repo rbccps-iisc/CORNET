@@ -18,6 +18,7 @@ from cornet.catalog.licence import licence_issue, licence_problems
 from cornet.catalog.loader import list_packs, load_pack
 from cornet.catalog.relays import UdpRelay
 from cornet.catalog.schema import ScenarioSpec
+from cornet.catalog.smoke import smoke_test
 from cornet.config.loader import load_unified
 from cornet.config.schema import RadioSitesConfig
 from cornet.orchestrator import catalog_leaderboard_fields
@@ -188,6 +189,10 @@ def test_compose_pendulum_is_deterministic(tmp_path: Path):
     assert "headless" in launch and "use_sim_time" in launch
     config = load_unified(first / "config.yaml")
     assert config.network.mobility.enabled is False
+    assert config.network.model_extra["layoutFile"] == "layout.json"
+    layout = json.loads((first / "layout.json").read_text())
+    assert layout["blockage"] is False
+    assert layout["background_ues_per_cell"] == 10
     assert config.catalog.standard is True
     assert "lockstep" not in (first / "config.yaml").read_text()
     preflight()
@@ -223,6 +228,10 @@ def test_mobile_compose_enables_model_states_and_marks_custom(tmp_path: Path):
     world = (task / "world.sdf").read_text()
     assert 'name="gnb0"' in world
     assert 'name="walker0"' in world
+    assert "libActorCollisionsPlugin.so" in world
+    layout = json.loads((task / "layout.json").read_text())
+    assert layout["num_non_self_blocking"] == 1
+    assert layout["devices"] == []
     assert "<max_step_size>0.004</max_step_size>" in world
     assert config.network.middleware.ip_list == ["10.0.0.2", "10.0.0.3", "10.0.1.1"]
     entry = {"metric": None}
@@ -284,3 +293,137 @@ def test_large_warehouse_records_tables_and_upstream_notes():
     assert "7.2-1" in tables and "7.2-4" in tables
     assert "accesspoint_namespace" in pack.notes
     assert "LICENSE" in pack.notes
+    assert pack.license.vendored is True
+    world = Path("cornet/catalog/worlds/warehouse_large/world.sdf").read_text()
+    assert "inf_floor" in world and "inf_roof" in world
+    assert "human_" not in world
+    assert licence_problems() == []
+
+
+def test_small_warehouse_is_vendored_with_both_roofs():
+    pack = load_pack("worlds", "warehouse_small")
+    assert pack.license.vendored is True
+    assert pack.license.spdx == "MIT-0"
+    root = Path("cornet/catalog/worlds/warehouse_small")
+    assert (root / "LICENSE").is_file()
+    assert (root / "world.sdf").is_file()
+    assert (root / "no_roof.sdf").is_file()
+    assert (root / "models").is_dir()
+    assert pack.spawn_slots[0]["name"] == "origin"
+    assert {zone["name"] for zone in pack.zones} >= {"aisle", "open_floor"}
+
+
+def test_no_roof_variant_is_the_compiled_world(tmp_path: Path):
+    spec = ScenarioSpec(
+        id="indoor",
+        robot="px4_x500",
+        world="warehouse_small",
+        world_variant="no_roof",
+        network="nr",
+        radio_sites=_radio(deployment="single_cell"),
+    )
+    task = compose(spec, tmp_path / "task")
+    text = (task / "world.sdf").read_text()
+    source = Path("cornet/catalog/worlds/warehouse_small/no_roof.sdf").read_text()
+    assert source[:400] in text
+    assert '<model name="aws_robomaker_warehouse_RoofB_01_001">' not in text
+
+
+def test_px4_pin_matches_the_installed_classic_tree():
+    pack = load_pack("robots", "px4_x500")
+    assert "36006b6d703a421175587d386a535bbdf8eb0a9c" in pack.license.provenance
+    assert "5b6966ed572a02e8273f446acb504a45a841ca53" in pack.license.provenance
+    assert "iris" in pack.description
+    assert "RTL" in " ".join(pack.intake_questions)
+
+
+def test_smoke_traverses_each_compiled_flow(tmp_path: Path):
+    spec = ScenarioSpec(
+        id="smoke",
+        robot="pendulum",
+        world="open_plain",
+        network="nr",
+        radio_sites=_radio(deployment="single_cell"),
+        seed=1,
+    )
+    task = compose(spec, tmp_path / "task")
+    smoke_test(task)
+
+
+def test_unknown_zone_names_the_zone(tmp_path: Path):
+    spec = ScenarioSpec(
+        id="zone",
+        robot="turtlebot3",
+        world="open_plain",
+        network="nr",
+        radio_sites=_radio(deployment="single_cell"),
+        population=[{"archetype": "walker", "count": 1, "zone": "no-such-zone"}],
+    )
+    with pytest.raises(ValueError, match="unknown zone no-such-zone"):
+        compose(spec, tmp_path / "task")
+
+
+def test_missing_actor_plugin_names_the_build_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("CORNET_ACTOR_PLUGIN", str(tmp_path / "missing.so"))
+    spec = ScenarioSpec(
+        id="plugin",
+        robot="turtlebot3",
+        world="open_plain",
+        network="nr",
+        radio_sites=_radio(deployment="single_cell"),
+        population=[{"archetype": "walker", "count": 1, "zone": "open_floor"}],
+    )
+    with pytest.raises(FileNotFoundError, match="make actor-collisions"):
+        compose(spec, tmp_path / "task")
+
+
+def test_phone_user_keeps_the_actor_name_and_video_profile(tmp_path: Path):
+    spec = ScenarioSpec(
+        id="phones",
+        robot="turtlebot3",
+        world="open_plain",
+        network="nr",
+        radio_sites=_radio(deployment="single_cell"),
+        population=[
+            {
+                "archetype": "walker_with_phone",
+                "count": 1,
+                "zone": "open_floor",
+                "traffic": {"profile": "video"},
+                "motion": {"speed_mps": [1.0, 1.0]},
+            },
+            {"archetype": "static_user", "count": 1, "zone": "open_floor", "traffic": {"profile": "video"}},
+        ],
+        seed=2,
+    )
+    task = compose(spec, tmp_path / "task")
+    devices = json.loads((task / "layout.json").read_text())["devices"]
+    assert devices[0]["name"] == "walker0"
+    assert devices[0]["kind"] == "walker_with_phone"
+    assert devices[0]["traffic"] == "video"
+    assert devices[0]["mobile"] is True
+    assert devices[1]["kind"] == "static_user"
+    assert devices[1]["traffic"] == "video"
+    config = load_unified(task / "config.yaml")
+    assert config.network.population[0].traffic.profile == "video"
+
+
+def test_wifi_neighbour_shares_channel_36(tmp_path: Path):
+    spec = ScenarioSpec(
+        id="neighbours",
+        robot="turtlebot3",
+        world="open_plain",
+        network="wifi_ns3",
+        radio_sites=_radio(deployment="custom", custom_sites=[{"x": 0.0, "y": 0.0, "z": 3.0}]),
+        population=[{"archetype": "wifi_neighbour", "count": 1, "zone": "open_floor", "channel": 36}],
+    )
+    task = compose(spec, tmp_path / "task")
+    layout = json.loads((task / "layout.json").read_text())
+    assert layout["wifi_channel"] == 36
+    assert layout["devices"][0]["kind"] == "wifi_neighbour"
+    assert layout["devices"][0]["channel"] == 36
+    with pytest.raises(ValueError, match="wifi_neighbour requires the wifi_ns3 pack"):
+        compose(
+            spec.model_copy(update={"id": "bad", "network": "nr", "radio_sites": _radio(deployment="single_cell")}),
+            tmp_path / "nr",
+        )

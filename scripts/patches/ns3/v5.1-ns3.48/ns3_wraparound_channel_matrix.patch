@@ -1,0 +1,35 @@
+diff --git a/src/spectrum/model/three-gpp-channel-model.cc b/src/spectrum/model/three-gpp-channel-model.cc
+--- a/src/spectrum/model/three-gpp-channel-model.cc
++++ b/src/spectrum/model/three-gpp-channel-model.cc
+@@ -2517,9 +2517,17 @@
+         const Time matrixT = itMatrix->second->m_generatedTime;
+         const bool paramsNewer = paramsT > matrixT;
+         const bool antennaChanged = AntennaSetupChanged(aAntenna, bAntenna, itMatrix->second);
++        // Wrap-around can replace channel parameters at time 0, when the new
++        // parameter timestamp is not greater than the matrix timestamp. Rebuild
++        // the matrix when its cluster count no longer matches those parameters.
++        const uint16_t expectedPages =
++            channelParams->m_cluster1st != channelParams->m_cluster2nd
++                ? static_cast<uint16_t>(channelParams->m_reducedClusterNumber + 4)
++                : static_cast<uint16_t>(channelParams->m_reducedClusterNumber + 2);
++        const bool sizeMismatch = itMatrix->second->m_channel.GetNumPages() != expectedPages;
+ 
+         // channel parameters changed
+-        if (paramsNewer || antennaChanged)
++        if (paramsNewer || antennaChanged || sizeMismatch)
+         {
+             NS_LOG_DEBUG("Generate a new channel matrix: paramsNewer="
+                          << paramsNewer << " antennaChanged=" << antennaChanged << " paramsT="
+diff --git a/src/spectrum/model/three-gpp-spectrum-propagation-loss-model.cc b/src/spectrum/model/three-gpp-spectrum-propagation-loss-model.cc
+index de9b248..e201103 100644
+--- a/src/spectrum/model/three-gpp-spectrum-propagation-loss-model.cc
++++ b/src/spectrum/model/three-gpp-spectrum-propagation-loss-model.cc
+@@ -488,6 +488,8 @@ ThreeGppSpectrumPropagationLossModel::GetLongTerm(
+         // or the u beam has been changed
+         update = m_longTermMap[longTermId]->m_channel->m_generatedTime !=
+                      channelMatrix->m_generatedTime ||
++                 m_longTermMap[longTermId]->m_longTerm->GetNumPages() !=
++                     channelMatrix->m_channel.GetNumPages() ||
+                  m_longTermMap[longTermId]->m_sW != sW || m_longTermMap[longTermId]->m_uW != uW;
+     }
+     else

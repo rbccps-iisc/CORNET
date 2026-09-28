@@ -1,7 +1,7 @@
 name: warehouse_large
 kind: worlds
 version: "1"
-description: ARTPARK large warehouse extended to the TR 38.901 InF small hall, 120 x 60 m. Geometry is not imported yet.
+description: ARTPARK large warehouse extended to the TR 38.901 InF small hall, 120 x 60 x 10 m.
 provides: {}
 requires:
   gazebo: classic-11
@@ -10,8 +10,8 @@ compatible:
   networks: [nr, lte, wifi_ns3]
 license:
   spdx: project-owned
-  vendored: false
-  provenance: warehouse_gazebo by Kavish Shah and sadgun; upstream LICENSE is still requested
+  vendored: true
+  provenance: warehouse_gazebo by Kavish Shah and sadgun; upstream LICENSE is still requested; aws_robomaker_* models remain MIT-0
   authors:
     - Kavish Shah
     - sadgun
@@ -20,6 +20,34 @@ bounds:
   x_max: 120
   y_min: 0
   y_max: 60
+origin:
+  x: 0
+  y: 0
+  z: 0
+spawn_slots:
+  - name: centre
+    x: 60
+    y: 30
+    z: 0
+  - name: west_aisle
+    x: 40
+    y: 30
+    z: 0
+  - name: east_aisle
+    x: 80
+    y: 30
+    z: 0
+zones:
+  - name: hall
+    x_min: 0
+    x_max: 120
+    y_min: 0
+    y_max: 60
+  - name: aisle
+    x_min: 20
+    x_max: 100
+    y_min: 25
+    y_max: 35
 supported_deployments:
   - single_cell
   - 3gpp_inf
@@ -49,7 +77,13 @@ mounting_points:
     isd_m: 20
     height_m: 3
     hall_m: [120, 50, 3]
+model_paths:
+  - cornet/catalog/worlds/warehouse_large/models
+roof: true
 notes: >
-  spawn_ap.py in the upstream package returns the undefined name accesspoint_namespace.
-  An Apache-2.0 LICENSE has been requested from the ARTPARK authors and is not in the tree yet.
-  Static human meshes are not imported; population actors replace them.
+  Props were rotated 90 degrees and centred so they fit the 120 x 60 m hall.
+  The hall shell is inf_floor, inf_wall_south, inf_wall_north, inf_wall_west,
+  inf_wall_east, and inf_roof. spawn_ap.py in the upstream package returns the
+  undefined name accesspoint_namespace. An Apache-2.0 LICENSE has been requested
+  from the ARTPARK authors and is not in the tree yet. Static human meshes are
+  not imported; population actors replace them.

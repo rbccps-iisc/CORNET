@@ -19,6 +19,10 @@ Auto-research scheduler experiments (EDF and AoI) need the same MAC schedulers o
 
 Credit: Andrea Ramos, Yanet Estrada, Miguel Cantero, Jaime Romero, David Martín-Sacristán, Saúl Inca, Manuel Fuentes, and Jose F. Monserrat, "Implementation and Calibration of the 3GPP Industrial Channel Model for ns-3", WNS3 2022. Repository: https://gitlab.com/andre.ramosp/ns-3-inf-channel-modeling.
 
+## Wrap-around channel matrix
+
+`ns3_wraparound_channel_matrix.patch` rebuilds the 3GPP channel matrix and the cached long-term component when wrap-around replaces the channel parameters at simulation time 0. Upstream compares timestamps with `>`, so a replacement at time 0 kept the previous cluster count and aborted in `CalcBeamformingGain`. Apply it after `ns3_channel_inf.patch`.
+
 ## Aerial channel patch
 
 `ns3_channel_aerial_36777.patch` adds TR 36.777 V15.0.0 Annex B path loss and LOS probability for `UMa-AV`, `UMi-AV`, and `RMa-AV`. The scope is aerial path loss only: fast fading is unchanged. Heights outside 1.5 m to 300 m are clamped and a warning is logged. Below the scenario threshold the terrestrial UMa, UMi-Street Canyon, or RMa model is used. The cross-check against `ntn-sagin`'s calculator is in `calibration/aerial/VERDICT.md`. That calculator was run for numbers only and its source is not in this tree.
