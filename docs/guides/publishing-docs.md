@@ -4,7 +4,7 @@ The site is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-mate
 
 ## One-time setup (repository admin)
 
-GitHub Actions cannot publish until Pages is turned on for the repository. A user with **admin** access on `rbccps-iisc/CORNET` must do this once:
+The workflow token cannot create the Pages site. `actions/configure-pages` can try, but only with a personal access token or a GitHub App token, not `GITHUB_TOKEN`. A user with **admin** access on `rbccps-iisc/CORNET` must do this once:
 
 1. Open [Settings → Pages](https://github.com/rbccps-iisc/CORNET/settings/pages).
 2. Under **Build and deployment**, set **Source** to **GitHub Actions** (not “Deploy from a branch”).
