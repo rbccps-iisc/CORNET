@@ -25,6 +25,20 @@ from cornet.orchestrator import catalog_leaderboard_fields
 from cornet.plugins.network.ns3_plugin import Ns3Plugin, nodes_payload
 
 _HELPER = Path.home() / "ns-3-dev-v51/contrib/nr/helper/hexagonal-grid-scenario-helper.cc"
+_ACTOR_PLUGIN = (
+    Path(__file__).resolve().parents[1]
+    / "scripts/gazebo/actor_collisions/build/libActorCollisionsPlugin.so"
+)
+
+
+@pytest.fixture(autouse=True)
+def _actor_plugin_for_compose(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory):
+    """Walker compose checks that the plugin file exists. CI does not build it."""
+    if _ACTOR_PLUGIN.is_file():
+        return
+    stub = tmp_path_factory.mktemp("actor-plugin") / "libActorCollisionsPlugin.so"
+    stub.write_bytes(b"")
+    monkeypatch.setenv("CORNET_ACTOR_PLUGIN", str(stub))
 
 
 def _radio(**kwargs) -> RadioSitesConfig:
