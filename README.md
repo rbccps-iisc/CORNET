@@ -26,7 +26,7 @@ python -m cornet tasks/pendulum_nr_control
 python -m cornet view tasks/pendulum_nr_control
 ```
 
-See [docs/INSTALL.md](docs/INSTALL.md) for system prerequisites and [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for a walkthrough. The same pages are published at <https://rbccps-iisc.github.io/CORNET/>.
+See [docs/INSTALL.md](docs/INSTALL.md) for system prerequisites and [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for a walkthrough. The same pages are published at <https://rbccps-iisc.github.io/CORNET/> once a repository admin enables [GitHub Pages with Actions](docs/guides/publishing-docs.md).
 
 ## Development
 

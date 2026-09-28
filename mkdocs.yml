@@ -27,6 +27,7 @@ nav:
   - Architecture: ARCHITECTURE.md
   - Lineage: LINEAGE.md
   - Guides:
+      - Publishing docs: guides/publishing-docs.md
       - Research session: guides/research-session.md
       - Writing a task: guides/writing-a-task.md
       - Custom plugin: guides/custom-plugin.md
