@@ -33,6 +33,43 @@ def test_early_launch_exit_includes_stdout(monkeypatch) -> None:
     assert "models/pendulum.urdf" in message
 
 
+def test_launch_sources_ros_when_the_shell_has_not(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("ROS_DISTRO", raising=False)
+    setup = tmp_path / "setup.bash"
+    setup.write_text("# stub\n")
+    monkeypatch.setenv("CORNET_ROS_SETUP", str(setup))
+    seen: dict = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["sourced"] = cmd
+        payload = '{"ROS_DISTRO": "humble", "PATH": "/opt/ros/humble/bin"}'
+        return type("R", (), {"returncode": 0, "stdout": payload + "\n", "stderr": ""})()
+
+    def fake_popen(cmd, **kwargs):
+        seen["argv"] = cmd
+        seen["env"] = kwargs.get("env")
+
+        class _Proc:
+            pid = 7
+            stdout = None
+
+            def poll(self):
+                return None
+
+        return _Proc()
+
+    monkeypatch.setattr("cornet.plugins.robot.gazebo_plugin.subprocess.run", fake_run)
+    monkeypatch.setattr("cornet.plugins.robot.gazebo_plugin.subprocess.Popen", fake_popen)
+    plugin = GazeboPlugin()
+    plugin._auto_generated = False
+    plugin._launch_path = tmp_path / "launch.py"
+    plugin._launch_path.write_text("pass\n")
+    plugin._wait_for_clock = lambda: None
+    plugin.start()
+    assert seen["env"]["ROS_DISTRO"] == "humble"
+    assert seen["argv"][0] == "ros2"
+
+
 def test_launch_starts_in_its_own_process_group(monkeypatch, tmp_path: Path) -> None:
     seen: dict = {}
 

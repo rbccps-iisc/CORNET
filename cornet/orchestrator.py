@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -41,6 +42,32 @@ def _is_ros_launch(path: Path) -> bool:
         return True
     text = path.read_text(errors="replace")
     return "generate_launch_description" in text
+
+
+def apply_trial_env(config: UnifiedConfig) -> None:
+    """Apply the research job's seed and overrides for this process.
+
+    The job runner sets ``CORNET_EXPERIMENT_SEED`` and ``CORNET_OVERRIDES``
+    (a JSON object of config key paths). A normal ``cornet run`` leaves both
+    unset, so the task file is unchanged.
+    """
+    seed = os.environ.get("CORNET_EXPERIMENT_SEED")
+    if seed:
+        config.experiment.seed = int(seed)
+    raw = os.environ.get("CORNET_OVERRIDES")
+    if not raw:
+        return
+    overrides = json.loads(raw)
+    if not isinstance(overrides, dict) or not overrides:
+        return
+    from cornet.sweep.expander import _set_keypath
+
+    labels = []
+    for key, value in overrides.items():
+        _set_keypath(config, key, value)
+        labels.append(f"{key.split('.')[-1]}={value}")
+    base = config.experiment.name or "default"
+    config.experiment.name = f"{base}+{'+'.join(labels)}"
 
 
 def catalog_leaderboard_fields(config: UnifiedConfig) -> dict:
@@ -120,6 +147,7 @@ class Orchestrator:
 
     def _run_variant(self, config: UnifiedConfig, task_dir: Path | None) -> None:
         """Run a single variant through the full lifecycle."""
+        apply_trial_env(config)
         # Inject NS-3 version tag into variant_id before ExperimentContext is built
         # so that every downstream consumer (context, leaderboard, logs) sees the tag.
         # Controlled by CORNET_NS3_TAG env var (e.g. "ns3-v24"). No-op when unset.
@@ -204,7 +232,7 @@ class Orchestrator:
                         "output_dir": str(output_dir),
                         "primary_metric": config.experiment.primary_metric,
                         "error": str(lifecycle_error),
-                        **provenance_fields(config, output_dir),
+                        **provenance_fields(config, output_dir if telemetry.started else None),
                     },
                 )
             raise lifecycle_error

@@ -49,6 +49,14 @@ The root of `leaderboard.json` is a JSON **array**. Each element is a leaderboar
 | `output_dir` | string | ✓ | Path to the results directory written by the network/robot plugins. |
 | `primary_metric` | string \| null | ✓ | Name of the metric (from `experiment.primary_metric` in `config.yaml`). Used by `cornet view` for sorting. |
 | `error` | string | | Present only in `FAILURE` entries. Contains the exception message or EvalTool failure detail. |
+| `config_hash` | string | | SHA-256 of the resolved variant config. Older entries may omit it. |
+| `git_sha` | string \| null | | Repository HEAD at run time, or `null` outside a git checkout. |
+| `seed` | number | | Variant seed. Sweep repeats use `experiment.seed`, then `seed+1`, and so on. |
+| `hypothesis_id` | string \| null | | Research hypothesis id, or `null` outside a research session. |
+| `lane` | string | | `CORNET_NS3_TAG`, or `none` when that variable is unset. |
+| `standard` | boolean | | `true` for a catalogue-standard scenario. Defaults to `true`. |
+| `timing_ok` | boolean \| string | | `true`, `false`, or `unavailable`. Taken from `timing.json` only when this run started telemetry. A launch that exits before that leaves `unavailable` even if an older `timing.json` is in the output directory. |
+| `rtf_mean` | number | | Gazebo real-time factor mean, present only when `timing.json` recorded `gazebo_rtf.mean`. |
 
 ## Atomic write guarantee
 

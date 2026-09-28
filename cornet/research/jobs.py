@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import queue
 import subprocess
 import threading
@@ -104,6 +105,8 @@ def _subprocess_executor(task_dir: Path, overrides: dict, seed: int, hypothesis_
     env["CORNET_EXPERIMENT_SEED"] = str(seed)
     if hypothesis_id:
         env["CORNET_HYPOTHESIS_ID"] = hypothesis_id
+    if overrides:
+        env["CORNET_OVERRIDES"] = json.dumps(overrides)
     completed = subprocess.run(
         ["python3", "-m", "cornet", "run", str(task_dir)],
         cwd=str(task_dir.parents[1] if task_dir.parent.name == "tasks" else task_dir.parent),

@@ -77,6 +77,7 @@ Go deeper with the topic guides:
 | [Custom EvalTool](guides/custom-eval-tool.md) | Extract metrics from experiment output with EvalTool |
 | [Parameter Sweep](guides/parameter-sweep.md) | Sweep parameters across runs; understand variant IDs and output layout |
 | [Middleware](guides/middleware.md) | AoI tracker, physics clock, packet dispatcher, and TUN manager |
+| [Research session](guides/research-session.md) | Question, brief, critic, one experiment, and the report |
 
 ---
 

@@ -13,7 +13,7 @@ from cornet.research.brief import load_brief
 from cornet.research.critic import caveats_for, deterministic_checks, guard_metric_flags, parse_challenge_report
 from cornet.research.gitwork import foreign_changes, revert_paths
 from cornet.research.harness import run_session
-from cornet.research.jobs import JobQueue
+from cornet.research.jobs import JobQueue, _subprocess_executor
 from cornet.research.session import new_session, privilege_error
 from cornet.research.stats import compare_samples
 from cornet.research.tools import TOOL_NAMES, ToolContext, build_tools
@@ -160,6 +160,43 @@ def test_jobs_queue_and_survive_crashes(tmp_path: Path) -> None:
     crashed = jobs.submit(task, {}, 1, 3)
     assert jobs.wait(crashed.job_id).status == "failed"
     assert "preflight" in crashed.error
+
+
+def test_executor_passes_seed_and_overrides(monkeypatch, tmp_path: Path) -> None:
+    seen: dict = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["env"] = kwargs["env"]
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("cornet.research.jobs.subprocess.run", fake_run)
+    task = tmp_path / "tasks" / "pendulum_nr_control"
+    task.mkdir(parents=True)
+    _subprocess_executor(task, {"network.schedulerType": "edf"}, 4, "h1")
+    assert seen["env"]["CORNET_EXPERIMENT_SEED"] == "4"
+    assert seen["env"]["CORNET_HYPOTHESIS_ID"] == "h1"
+    assert json.loads(seen["env"]["CORNET_OVERRIDES"]) == {"network.schedulerType": "edf"}
+
+
+def test_failed_trial_does_not_spend_the_budget(tmp_path: Path) -> None:
+    task = _task(tmp_path)
+
+    def executor(*_args):
+        raise RuntimeError("ros2 launch exited early")
+
+    session = run_session(
+        task,
+        "Does edf lower AoI?",
+        researcher=Scripted([_brief_text(), '{"hypothesis_id": "h1", "repeats": 1, "groups": [{"name": "edf", "overrides": {"network.schedulerType": "edf"}, "seed": 1}]}', "The launch failed."]),
+        critic=Scripted(["### Challenge 1: none\n- **severity**: minor\nNo blocking issue.\n"]),
+        executor=executor,
+        repo=tmp_path,
+        input_fn=lambda _prompt="": "",
+        output_fn=lambda *_a, **_k: None,
+    )
+    assert session.phase == "done"
+    assert session.consumed["trials"] == 0
+    assert session.consumed.get("sim_seconds", 0) == 0
 
 
 def test_leaderboard_summary_is_not_a_dump(tmp_path: Path) -> None:

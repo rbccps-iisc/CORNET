@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -20,6 +21,45 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CLOCK_TOPIC_TIMEOUT = 60  # seconds to wait for /clock to appear
+
+
+def ros_launch_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """Return an environment in which ``ros2`` can import ``rclpy``.
+
+    A shell that has not sourced ROS still has ``/opt/ros/humble/bin`` on
+    ``PATH`` sometimes, and ``ros2`` then fails to load ``librcl_action.so``.
+    When ``ROS_DISTRO`` is unset, source ``CORNET_ROS_SETUP`` or the Humble
+    ``setup.bash`` and use that environment for the launch.
+    """
+    env = dict(base or os.environ)
+    if env.get("ROS_DISTRO"):
+        return env
+    setup = env.get("CORNET_ROS_SETUP", "/opt/ros/humble/setup.bash")
+    if not Path(setup).is_file():
+        return env
+    script = (
+        'source "$1" >/dev/null 2>&1 && '
+        'python3 -c "import json,os; print(json.dumps(dict(os.environ)))"'
+    )
+    completed = subprocess.run(
+        ["bash", "-c", script, "bash", setup],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        logger.warning("ROS setup %s failed: %s", setup, (completed.stderr or "").strip())
+        return env
+    line = next((item for item in reversed(completed.stdout.splitlines()) if item.startswith("{")), "")
+    if not line:
+        return env
+    try:
+        loaded = json.loads(line)
+    except json.JSONDecodeError:
+        return env
+    if not isinstance(loaded, dict) or "ROS_DISTRO" not in loaded:
+        return env
+    return {str(key): str(value) for key, value in loaded.items()}
 
 
 def _signal_group(proc: subprocess.Popen, sig: int) -> None:
@@ -75,7 +115,8 @@ class GazeboPlugin(Plugin):
             raise FileNotFoundError(f"Launch file not found: {self._launch_path}")
 
         logger.info("Launching Gazebo via: ros2 launch %s", self._launch_path)
-        env = os.environ.copy()
+        env = ros_launch_env()
+        self._proc_env = env
         robot = getattr(cfg, "robot", None)
         repo_root = Path(__file__).resolve().parents[3]
         model_paths = []
@@ -156,6 +197,7 @@ class GazeboPlugin(Plugin):
                 ["ros2", "topic", "list"],
                 capture_output=True,
                 text=True,
+                env=getattr(self, "_proc_env", None),
             )
             if "/clock" in result.stdout:
                 logger.info("Gazebo /clock topic available — simulation running")

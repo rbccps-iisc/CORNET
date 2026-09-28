@@ -97,9 +97,16 @@ def _sdk_pair(session: ResearchSession, tools: dict):
 
     from cornet.research.agents import create_local_agent, sdk_custom_tools
 
-    api_key = os.environ["CURSOR_API_KEY"]
+    try:
+        from cursor_sdk import Cursor
+    except ImportError as exc:
+        raise SystemExit(
+            "cursor-sdk is not installed. Install the research extra: pip install -e '.[research]'"
+        ) from exc
+    api_key = os.environ.get("CURSOR_API_KEY")
+    if not api_key:
+        raise SystemExit("Set CURSOR_API_KEY before python -m cornet research.")
     model = os.environ.get("CORNET_RESEARCH_MODEL", "composer-2.5")
-    from cursor_sdk import Cursor
 
     listed = [item.id if hasattr(item, "id") else str(item) for item in Cursor.models.list()]
     custom = sdk_custom_tools(tools)
@@ -223,6 +230,7 @@ def _run_phases(session, ctx, tools, researcher, critic, repo: Path, output_fn) 
                 session.save()
                 return
             result: dict = {}
+            failed = False
             for group in batch["groups"]:
                 if budget_exhausted(session, now=time.time()):
                     break
@@ -237,12 +245,23 @@ def _run_phases(session, ctx, tools, researcher, critic, repo: Path, output_fn) 
                 if result.get("error"):
                     output_fn(result["error"])
                     session.phase = "report"
+                    failed = True
                     break
                 job = ctx.jobs.wait(result["job_id"])
-                session.consumed["trials"] = session.consumed.get("trials", 0) + job.repeats
                 config = load_unified(session.task_dir / "config.yaml")
+                if job.status == "failed":
+                    output_fn(job.error)
+                    completed = len(job.entries)
+                    session.consumed["trials"] = session.consumed.get("trials", 0) + completed
+                    session.consumed["sim_seconds"] = (
+                        session.consumed.get("sim_seconds", 0) + completed * config.experiment.duration
+                    )
+                    session.phase = "report"
+                    failed = True
+                    break
+                session.consumed["trials"] = session.consumed.get("trials", 0) + job.repeats
                 session.consumed["sim_seconds"] = session.consumed.get("sim_seconds", 0) + job.repeats * config.experiment.duration
-            if len(batch["groups"]) >= 2 and not result.get("error"):
+            if not failed and len(batch["groups"]) >= 2 and not result.get("error"):
                 tools["compare"].execute(
                     {
                         "a": batch["groups"][0]["name"],

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from cornet.config.loader import load_unified
+from cornet.orchestrator import apply_trial_env
 from cornet.leaderboard.viewer import show
 from cornet.leaderboard.writer import provenance_fields
 from cornet.plugins.network.ns3_plugin import append_experiment_args
@@ -75,6 +76,34 @@ experiment:
     fields = provenance_fields(cfg, out)
     assert fields["rtf_mean"] == 0.8
     assert fields["timing_ok"] is False
+
+
+def test_trial_env_sets_seed_and_names_the_override(tmp_path: Path, monkeypatch) -> None:
+    cfg = _config(
+        tmp_path,
+        """
+_schema: unified-v1
+network:
+  plugin: ns3
+  type: ns3
+  nodes: []
+  schedulerType: edf
+robot:
+  plugin: gazebo
+  robots: []
+experiment:
+  name: pendulum_nr_control
+  duration: 1.0
+  seed: 1
+  output_dir: results
+""",
+    )
+    monkeypatch.setenv("CORNET_EXPERIMENT_SEED", "15")
+    monkeypatch.setenv("CORNET_OVERRIDES", '{"network.schedulerType": "pf"}')
+    apply_trial_env(cfg)
+    assert cfg.experiment.seed == 15
+    assert cfg.network.schedulerType == "pf"
+    assert cfg.experiment.name == "pendulum_nr_control+schedulerType=pf"
 
 
 def test_viewer_renders_entries_without_provenance(tmp_path: Path) -> None:
