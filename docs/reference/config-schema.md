@@ -246,7 +246,7 @@ Experiment runtime settings (`experiment:` section).
 |---|---|---|---|---|
 | `name` | string | — | ✓ | Human-readable experiment name, used as the leaderboard title. |
 | `duration` | number | — | ✓ | Experiment wall-clock duration in seconds. The orchestrator terminates all plugins after this time. |
-| `seed` | integer | `1` |  | Seed for catalogue population waypoints and NS-3 repeat separation. |
+| `seed` | integer | `1` |  | Base seed for catalogue placement and NS-3 --rngRun. Sweep repeats use seed, seed+1, seed+2, and so on. |
 | `output_dir` | string | `"results"` |  | Directory where results, logs, and leaderboard entries are written (relative to task directory or absolute). |
 | `primary_metric` | string | null | null |  | Key from EvalTool output to rank leaderboard entries by. None = leaderboard is unranked. |
 | `higher_is_better` | boolean | `False` |  | Leaderboard sort direction for primary_metric. True = higher score ranks first; False = lower score ranks first. |

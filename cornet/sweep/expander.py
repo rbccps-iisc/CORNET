@@ -26,6 +26,7 @@ def expand_sweep(config: UnifiedConfig) -> list[UnifiedConfig]:
     if sweep is None or not sweep.axes:
         cfg = copy.deepcopy(config)
         cfg.experiment.name = config.experiment.name or "default"
+        cfg.experiment.seed = config.experiment.seed
         return [cfg]
 
     axes = list(sweep.axes.items())
@@ -50,6 +51,7 @@ def expand_sweep(config: UnifiedConfig) -> list[UnifiedConfig]:
 
             cfg.experiment.name = variant_id
             cfg.experiment.output_dir = f"{config.experiment.output_dir}/{variant_id}"
+            cfg.experiment.seed = config.experiment.seed + repeat_idx - 1
             variants.append(cfg)
 
     return variants

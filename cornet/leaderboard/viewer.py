@@ -39,6 +39,8 @@ def show(task_dir: str, higher_is_better: bool = False, console: Console | None 
     table.add_column("Variant")
     table.add_column("Status")
     table.add_column("Metric", justify="right")
+    table.add_column("Seed")
+    table.add_column("Lane")
     table.add_column("Output Dir")
     table.add_column("Timestamp")
 
@@ -54,6 +56,8 @@ def show(task_dir: str, higher_is_better: bool = False, console: Console | None 
             str(entry.get("variant_id", "")),
             str(entry.get("status", "")),
             "" if entry.get("metric") is None else f"{float(entry['metric']):.6f}",
+            "" if entry.get("seed") is None else str(entry.get("seed")),
+            str(entry.get("lane") or ""),
             str(entry.get("output_dir", "")),
             str(entry.get("timestamp", "")),
             style=style,

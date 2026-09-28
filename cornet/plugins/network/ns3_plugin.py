@@ -18,11 +18,20 @@ from typing import TYPE_CHECKING
 
 from cornet.plugins.base import Plugin
 
+from cornet.config.schema import UnifiedConfig
+
 if TYPE_CHECKING:
-    from cornet.config.schema import UnifiedConfig
     from cornet.context import ExperimentContext
 
 logger = logging.getLogger(__name__)
+
+
+def append_experiment_args(args: list[str], cfg: UnifiedConfig) -> None:
+    """Append duration and the variant seed when the caller has not set them."""
+    if not any(arg.startswith("--simTime=") for arg in args):
+        args.append(f"--simTime={cfg.experiment.duration}")
+    if not any(arg.startswith("--rngRun=") for arg in args):
+        args.append(f"--rngRun={cfg.experiment.seed}")
 
 # Scratch scripts in this repository that accept --timingLog / --timingPeriodMs.
 _TIMING_SCRIPTS = {
@@ -356,8 +365,7 @@ class Ns3Plugin(Plugin):
             if key in {"simulation_script", "timing_log", "layoutFile"}:
                 continue
             args.append(f"--{key}={val}")
-        if not any(arg.startswith("--simTime=") for arg in args):
-            args.append(f"--simTime={cfg.experiment.duration}")
+        append_experiment_args(args, cfg)
 
         layout_file = extra.get("layoutFile")
         if layout_file:

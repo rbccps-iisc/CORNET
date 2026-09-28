@@ -25,6 +25,10 @@ ui = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+research = [
+    "cursor-sdk==0.1.6",
+    "scipy==1.8.0",
+]
 ros2 = [
 ]
 ros1 = [

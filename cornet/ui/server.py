@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
@@ -77,6 +77,26 @@ def create_app(task_dir: Path) -> FastAPI:
         mtime = os.path.getmtime(leaderboard_path)
         running = (time.time() - mtime) < RUNNING_WINDOW_SECONDS
         return JSONResponse({"mtime": mtime, "running": running})
+
+    @app.get("/api/questions")
+    def get_questions() -> JSONResponse:
+        path = task_dir / "research" / "session.json"
+        if not path.is_file():
+            return JSONResponse([])
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return JSONResponse(data.get("questions") or [])
+
+    @app.post("/api/questions/{question_id}")
+    def post_question(question_id: str, payload: dict = Body(...)) -> JSONResponse:
+        from cornet.research.session import ResearchSession
+        from cornet.research.tools import answer_question
+
+        path = task_dir / "research" / "session.json"
+        if not path.is_file():
+            return JSONResponse({"error": "no session"}, status_code=404)
+        session = ResearchSession.load(path)
+        answer_question(session, question_id, str(payload.get("answer", "")))
+        return JSONResponse({"ok": True})
 
     # ------------------------------------------------------------------
     # Static file mount — registered LAST so /api/* routes take priority

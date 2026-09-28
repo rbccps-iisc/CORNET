@@ -62,6 +62,15 @@ def main() -> None:
         help="Directory for CSV, plots and summary (default: bench_results/<timestamp>)",
     )
 
+    research_parser = subparsers.add_parser("research", help="Run an auto-research session")
+    research_parser.add_argument("question", nargs="?", help="Research question")
+    research_parser.add_argument("--resume", default=None, help="Session id to resume")
+    research_parser.add_argument(
+        "--task",
+        default="tasks/pendulum_nr_control",
+        help="Task directory the session scores",
+    )
+
     # Allow bare positional: `python -m cornet tasks/foo` treated as run
     parser.add_argument("_task_positional", nargs="?", help=argparse.SUPPRESS)
 
@@ -78,6 +87,21 @@ def main() -> None:
 
     elif args.command == "ui":
         _run_ui(args.task, port=args.port)
+
+    elif args.command == "research":
+        from pathlib import Path
+
+        from cornet.research.harness import run_session
+
+        if not args.question and not args.resume:
+            print("error: provide a question or --resume", file=sys.stderr)
+            sys.exit(1)
+        run_session(
+            Path(args.task),
+            args.question or "",
+            resume_id=args.resume,
+            repo=Path.cwd(),
+        )
 
     elif args.command == "bench":
         from pathlib import Path

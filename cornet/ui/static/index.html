@@ -28,6 +28,8 @@
             <th>Variant ID</th>
             <th>Status</th>
             <th>Metric</th>
+            <th>Seed</th>
+            <th>Lane</th>
             <th>Timestamp</th>
             <th>Output Dir</th>
           </tr>
@@ -119,7 +121,7 @@ function coerceXValues(vals) {
 function renderTable(entries) {
   const tbody = document.getElementById('lb-body');
   if (entries.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6">No runs yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8">No runs yet.</td></tr>';
     return;
   }
   tbody.innerHTML = entries.map((e, i) => {
@@ -130,6 +132,8 @@ function renderTable(entries) {
     const metric = (e.metric !== undefined && e.metric !== null)
       ? Number(e.metric).toPrecision(6)
       : '—';
+    const seed = (e.seed !== undefined && e.seed !== null) ? escHtml(e.seed) : '—';
+    const lane = e.lane ? escHtml(e.lane) : '—';
     const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : '—';
     const outDir = e.output_dir
       ? `<span title="${escHtml(e.output_dir)}">${escHtml(shortPath(e.output_dir))}</span>`
@@ -139,6 +143,8 @@ function renderTable(entries) {
       <td>${escHtml(e.variant_id || '—')}${failBadge}</td>
       <td class="${statusClass}">${escHtml(e.status || '—')}</td>
       <td>${metric}</td>
+      <td>${seed}</td>
+      <td>${lane}</td>
       <td>${ts}</td>
       <td>${outDir}</td>
     </tr>`;

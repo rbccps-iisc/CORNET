@@ -350,7 +350,7 @@ class TimingConfig(BaseModel):
 class ExperimentConfig(BaseModel):
     name: str = Field(description="Human-readable experiment name, used as the leaderboard title.")
     duration: float = Field(description="Experiment wall-clock duration in seconds. The orchestrator terminates all plugins after this time.")
-    seed: int = Field(default=1, description="Seed for catalogue population waypoints and NS-3 repeat separation.")
+    seed: int = Field(default=1, description="Base seed for catalogue placement and NS-3 --rngRun. Sweep repeats use seed, seed+1, seed+2, and so on.")
     output_dir: str = Field(default="results", description="Directory where results, logs, and leaderboard entries are written (relative to task directory or absolute).")
     primary_metric: str | None = Field(default=None, description="Key from EvalTool output to rank leaderboard entries by. None = leaderboard is unranked.")
     higher_is_better: bool = Field(default=False, description="Leaderboard sort direction for primary_metric. True = higher score ranks first; False = lower score ranks first.")

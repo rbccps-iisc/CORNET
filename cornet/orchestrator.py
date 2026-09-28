@@ -193,7 +193,7 @@ class Orchestrator:
             # then re-raise so the caller (and make) sees a non-zero exit.
             if task_dir is not None:
                 import datetime
-                from cornet.leaderboard.writer import append_entry
+                from cornet.leaderboard.writer import append_entry, provenance_fields
                 append_entry(
                     task_dir=str(task_dir),
                     entry={
@@ -204,7 +204,7 @@ class Orchestrator:
                         "output_dir": str(output_dir),
                         "primary_metric": config.experiment.primary_metric,
                         "error": str(lifecycle_error),
-                        **catalog_leaderboard_fields(config),
+                        **provenance_fields(config, output_dir),
                     },
                 )
             raise lifecycle_error
@@ -226,7 +226,7 @@ class Orchestrator:
             )
             if task_dir is not None:
                 import datetime
-                from cornet.leaderboard.writer import append_entry
+                from cornet.leaderboard.writer import append_entry, provenance_fields
                 append_entry(
                     task_dir=str(task_dir),
                     entry={
@@ -237,7 +237,7 @@ class Orchestrator:
                         "output_dir": str(output_dir),
                         "primary_metric": config.experiment.primary_metric,
                         "error": str(exc),
-                        **catalog_leaderboard_fields(config),
+                        **provenance_fields(config, output_dir),
                     },
                 )
 
@@ -389,7 +389,7 @@ class Orchestrator:
                     "Use EvalTool.format_result() to construct the return string."
                 )
 
-        from cornet.leaderboard.writer import append_entry
+        from cornet.leaderboard.writer import append_entry, provenance_fields
         import datetime
         append_entry(
             task_dir=str(task_dir),
@@ -400,7 +400,7 @@ class Orchestrator:
                 "metric": metric,
                 "output_dir": str(output_dir),
                 "primary_metric": config.experiment.primary_metric,
-                **catalog_leaderboard_fields(config),
+                **provenance_fields(config, output_dir),
             },
         )
         logger.info("Leaderboard entry written: %s, metric=%s", status, metric)
